@@ -32,3 +32,4 @@ of a component, check the `Home Assistant help section <https://home-assistant.i
    :alt: Home Assistant - A project from the Open Home Foundation
    :target: https://www.openhomefoundation.org/
 
+ hi
