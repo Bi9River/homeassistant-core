@@ -35,3 +35,5 @@ of a component, check the `Home Assistant help section <https://home-assistant.i
 |Team member commit test|
 
 ## zihan's test commit and push - update readme
+
+## shiqi's test commit and push - update readme
