@@ -133,68 +133,104 @@ class VoiceCommandSegmenter:
     def process(self, chunk_seconds: float, speech_probability: float | None) -> bool:
         """Process samples using external VAD.
 
-        Returns False when command is done.
+        This method acts as the public entry point for voice command
+        segmentation.  It delegates detailed state handling to helper
+        methods to reduce complexity while maintaining the original
+        behaviour.  Returns ``False`` when the current voice command
+        finishes or times out, and ``True`` otherwise.
         """
+        # If a timeout was previously triggered, clear it so that
+        # subsequent calls behave normally.  ``timed_out`` is used
+        # externally to detect the timeout state.
         if self.timed_out:
             self.timed_out = False
 
-        self._timeout_seconds_left -= chunk_seconds
-        if self._timeout_seconds_left <= 0:
-            _LOGGER.debug(
-                "VAD end of speech detection timed out after %s seconds",
-                self.timeout_seconds,
-            )
-            self.reset()
-            self.timed_out = True
+        # Update timeout and check if we should abort due to an overall
+        # inactivity timeout.  ``_update_timeout`` will reset state and
+        # mark the instance as timed out when needed.
+        if not self._update_timeout(chunk_seconds):
             return False
 
-        if speech_probability is None:
-            speech_probability = 0.0
+        # Normalise ``None`` speech values to ``0.0`` so that threshold
+        # comparisons work consistently.
+        speech_prob = 0.0 if speech_probability is None else speech_probability
 
-        if not self.in_command:
-            # Before command
-            is_speech = speech_probability > self.before_command_speech_threshold
-            if is_speech:
-                self._reset_seconds_left = self.reset_seconds
-                self._speech_seconds_left -= chunk_seconds
-                if self._speech_seconds_left <= 0:
-                    # Inside voice command
-                    self.in_command = True
-                    self._command_seconds_left = (
-                        self.command_seconds - self.speech_seconds
-                    )
-                    self._silence_seconds_left = self.silence_seconds
-                    _LOGGER.debug("Voice command started")
-            else:
-                # Reset if enough silence
-                self._reset_seconds_left -= chunk_seconds
-                if self._reset_seconds_left <= 0:
-                    self._speech_seconds_left = self.speech_seconds
-                    self._reset_seconds_left = self.reset_seconds
+        # Delegate processing based on whether we are currently inside a
+        # voice command or still waiting for one to start.
+        if self.in_command:
+            return self._handle_in_command(chunk_seconds, speech_prob)
+        return self._handle_before_command(chunk_seconds, speech_prob)
+
+    def _update_timeout(self, chunk_seconds: float) -> bool:
+        """Update timeout counters and return False if a timeout occurs.
+
+        This helper centralises timeout handling and logging.  When the
+        total allowed duration is exceeded the segmenter is reset and
+        marked as timed out.
+        """
+        self._timeout_seconds_left -= chunk_seconds
+        if self._timeout_seconds_left > 0:
+            return True
+        _LOGGER.debug(
+            "VAD end of speech detection timed out after %s seconds",
+            self.timeout_seconds,
+        )
+        self.reset()
+        self.timed_out = True
+        return False
+
+    def _handle_before_command(self, chunk_seconds: float, speech_prob: float) -> bool:
+        """Handle processing before a voice command has started.
+
+        Returns ``True`` to continue processing.  State transitions to
+        "in command" mode when enough speech has been detected.
+        """
+        is_speech = speech_prob > self.before_command_speech_threshold
+        if is_speech:
+            # Speech detected before command start: decrement the
+            # pre-command speech counter.
+            self._reset_seconds_left = self.reset_seconds
+            self._speech_seconds_left -= chunk_seconds
+            if self._speech_seconds_left <= 0:
+                # Enter voice command state.
+                self.in_command = True
+                self._command_seconds_left = self.command_seconds - self.speech_seconds
+                self._silence_seconds_left = self.silence_seconds
+                _LOGGER.debug("Voice command started")
         else:
-            # In command
-            is_speech = speech_probability > self.in_command_speech_threshold
-            if not is_speech:
-                # Silence in command
+            # Silence detected: decrement reset counter and restore
+            # counters if we've been quiet long enough.
+            self._reset_seconds_left -= chunk_seconds
+            if self._reset_seconds_left <= 0:
+                self._speech_seconds_left = self.speech_seconds
                 self._reset_seconds_left = self.reset_seconds
-                self._silence_seconds_left -= chunk_seconds
-                self._command_seconds_left -= chunk_seconds
-                if (self._silence_seconds_left <= 0) and (
-                    self._command_seconds_left <= 0
-                ):
-                    # Command finished successfully
-                    self.reset()
-                    _LOGGER.debug("Voice command finished")
-                    return False
-            else:
-                # Speech in command.
-                # Reset silence counter if enough speech.
-                self._reset_seconds_left -= chunk_seconds
-                self._command_seconds_left -= chunk_seconds
-                if self._reset_seconds_left <= 0:
-                    self._silence_seconds_left = self.silence_seconds
-                    self._reset_seconds_left = self.reset_seconds
+        return True
 
+    def _handle_in_command(self, chunk_seconds: float, speech_prob: float) -> bool:
+        """Handle processing while inside a voice command.
+
+        Returns ``False`` when the command has ended, otherwise ``True``.
+        """
+        is_speech = speech_prob > self.in_command_speech_threshold
+        if not is_speech:
+            # Silence within a command: update counters and check for end.
+            self._reset_seconds_left = self.reset_seconds
+            self._silence_seconds_left -= chunk_seconds
+            self._command_seconds_left -= chunk_seconds
+            # Command finishes only if both the silence and minimum
+            # command duration counters have expired.
+            if self._silence_seconds_left <= 0 and self._command_seconds_left <= 0:
+                self.reset()
+                _LOGGER.debug("Voice command finished")
+                return False
+        else:
+            # Speech within a command: decrement counters and reset
+            # silence duration when enough speech has been detected.
+            self._reset_seconds_left -= chunk_seconds
+            self._command_seconds_left -= chunk_seconds
+            if self._reset_seconds_left <= 0:
+                self._silence_seconds_left = self.silence_seconds
+                self._reset_seconds_left = self.reset_seconds
         return True
 
     def process_with_vad(
