@@ -802,50 +802,42 @@ class BrSensor(SensorEntity):
         return None
 
     @callback
+    def _process_condition(self, condition: dict | None, sensor_type: str) -> bool:
+        """Process a given condition object and update the entity state."""
+        if not condition:
+            return False
+
+        new_state = None
+        if sensor_type.startswith(SYMBOL):
+            new_state = condition.get(EXACTNL)
+        elif sensor_type.startswith("conditioncode"):
+            new_state = condition.get(CONDCODE)
+        elif sensor_type.startswith("conditiondetailed"):
+            new_state = condition.get(DETAILED)
+        elif sensor_type.startswith("conditionexact"):
+            new_state = condition.get(EXACT)
+
+        img = condition.get(IMAGE)
+
+        if new_state != self.state or img != self.entity_picture:
+            self._attr_native_value = new_state
+            self._attr_entity_picture = img
+            return True
+
+        return False
+
+    @callback
     def _update_current_condition(self, data: dict, sensor_type: str) -> bool:
         """Update a current condition/symbol sensor."""
-        if condition := data.get(CONDITION):
-            new_state = None
-            if sensor_type.startswith(SYMBOL):
-                new_state = condition.get(EXACTNL)
-            elif sensor_type.startswith("conditioncode"):
-                new_state = condition.get(CONDCODE)
-            elif sensor_type.startswith("conditiondetailed"):
-                new_state = condition.get(DETAILED)
-            elif sensor_type.startswith("conditionexact"):
-                new_state = condition.get(EXACT)
-
-            img = condition.get(IMAGE)
-
-            if new_state != self.state or img != self.entity_picture:
-                self._attr_native_value = new_state
-                self._attr_entity_picture = img
-                return True
-        return False
+        condition = data.get(CONDITION)
+        return self._process_condition(condition, sensor_type)
 
     @callback
     def _update_forecast_condition(
         self, condition: dict | None, sensor_type: str
     ) -> bool:
         """Update a forecast condition/symbol sensor."""
-        if condition:
-            new_state = None
-            if sensor_type.startswith(SYMBOL):
-                new_state = condition.get(EXACTNL)
-            elif sensor_type.startswith("conditioncode"):
-                new_state = condition.get(CONDCODE)
-            elif sensor_type.startswith("conditiondetailed"):
-                new_state = condition.get(DETAILED)
-            elif sensor_type.startswith("conditionexact"):
-                new_state = condition.get(EXACT)
-
-            img = condition.get(IMAGE)
-
-            if new_state != self.state or img != self.entity_picture:
-                self._attr_native_value = new_state
-                self._attr_entity_picture = img
-                return True
-        return False
+        return self._process_condition(condition, sensor_type)
 
     @callback
     def _update_precipitation_forecast(self, data: dict, sensor_type: str) -> None:
