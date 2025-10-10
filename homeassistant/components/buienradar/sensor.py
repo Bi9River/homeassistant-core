@@ -824,7 +824,31 @@ class BrSensor(SensorEntity):
         return False
 
     @callback
-    def _load_data(self, data):  # noqa: C901
+    def _update_forecast_condition(
+        self, condition: dict | None, sensor_type: str
+    ) -> bool:
+        """Update a forecast condition/symbol sensor."""
+        if condition:
+            new_state = None
+            if sensor_type.startswith(SYMBOL):
+                new_state = condition.get(EXACTNL)
+            elif sensor_type.startswith("conditioncode"):
+                new_state = condition.get(CONDCODE)
+            elif sensor_type.startswith("conditiondetailed"):
+                new_state = condition.get(DETAILED)
+            elif sensor_type.startswith("conditionexact"):
+                new_state = condition.get(EXACT)
+
+            img = condition.get(IMAGE)
+
+            if new_state != self.state or img != self.entity_picture:
+                self._attr_native_value = new_state
+                self._attr_entity_picture = img
+                return True
+        return False
+
+    @callback
+    def _load_data(self, data):
         """Load the sensor with relevant data."""
         # Check if we have a new measurement,
         # otherwise we do not have to update the sensor
@@ -848,30 +872,14 @@ class BrSensor(SensorEntity):
 
             # update weather symbol & status text
             if sensor_type.startswith((SYMBOL, CONDITION)):
+                condition = None
                 try:
                     condition = data.get(FORECAST)[fcday].get(CONDITION)
                 except IndexError:
                     _LOGGER.warning(MSG_NO_FORECAST, fcday)
                     return False
 
-                if condition:
-                    new_state = condition.get(CONDITION)
-                    if sensor_type.startswith(SYMBOL):
-                        new_state = condition.get(EXACTNL)
-                    if sensor_type.startswith("conditioncode"):
-                        new_state = condition.get(CONDCODE)
-                    if sensor_type.startswith("conditiondetailed"):
-                        new_state = condition.get(DETAILED)
-                    if sensor_type.startswith("conditionexact"):
-                        new_state = condition.get(EXACT)
-
-                    img = condition.get(IMAGE)
-
-                    if new_state != self.state or img != self.entity_picture:
-                        self._attr_native_value = new_state
-                        self._attr_entity_picture = img
-                        return True
-                return False
+                return self._update_forecast_condition(condition, sensor_type)
 
             if sensor_type.startswith(WINDSPEED):
                 # hass wants windspeeds in km/h not m/s, so convert:
