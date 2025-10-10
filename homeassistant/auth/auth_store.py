@@ -475,7 +475,7 @@ class AuthStore:
         users: dict[str, models.User] = {}
 
         group_without_policy = migration_state.get("group_without_policy")
-        migrate_users_to_admin_group: bool = migration_state.get(
+        migrate_users_to_admin_group = migration_state.get(
             "migrate_users_to_admin_group", False
         )
 
