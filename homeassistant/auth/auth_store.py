@@ -23,7 +23,6 @@ from .const import (
 )
 from .permissions import system_policies
 from .permissions.models import PermissionLookup
-from .permissions.types import PolicyType
 
 STORAGE_VERSION = 1
 STORAGE_KEY = "auth"
@@ -311,13 +310,13 @@ class AuthStore:
         credentials.data = data
         self._async_schedule_save()
 
+    # Refactor this function to reduce complexity
     async def async_load(self) -> None:
         """Load the users."""
         if self._loaded:
             raise RuntimeError("Auth storage is already loaded")
         self._loaded = True
 
-        # Initialize registries and permission lookup
         dev_reg = dr.async_get(self.hass)
         ent_reg = er.async_get(self.hass)
         data = await self._store.async_load()
@@ -329,65 +328,58 @@ class AuthStore:
             self._set_defaults()
             return
 
-        users: dict[str, models.User] = {}
-        groups: dict[str, models.Group] = {}
-        credentials: dict[str, models.Credentials] = {}
+        # Load groups and get migration state
+        groups, migration_state = self._load_and_migrate_groups(data)
 
-        # Soft-migrating data as we load. We are going to make sure we have a
-        # read only group and an admin group. There are two states that we can
-        # migrate from:
-        # 1. Data from a recent version which has a single group without policy
-        # 2. Data from old version which has no groups
+        # Load users with migration state
+        users = self._load_and_migrate_users(data, groups, perm_lookup, migration_state)
+
+        # Load credentials and attach to users
+        self._load_credentials(data, users)
+
+        # Load refresh tokens and attach to users
+        self._load_refresh_tokens(data, users)
+
+        self._groups = groups
+        self._users = users
+        self._build_token_id_to_user_id()
+        self._async_schedule_save(INITIAL_LOAD_SAVE_DELAY)
+
+    def _load_and_migrate_groups(
+        self, data: dict[str, Any]
+    ) -> tuple[dict[str, models.Group], dict[str, Any]]:
+        """Load groups from data and handle migration.
+
+        Soft-migrating data as we load. We are going to make sure we have a
+        read only group and an admin group. There are two states that we can
+        migrate from:
+        1. Data from a recent version which has a single group without policy
+        2. Data from old version which has no groups
+        Returns:
+            Tuple of (groups dict, migration_state dict)
+        """
+
+        groups: dict[str, models.Group] = {}
+
         has_admin_group = False
         has_user_group = False
         has_read_only_group = False
-        group_without_policy = None
+        group_without_policy: str | None = None
 
         # When creating objects we mention each attribute explicitly. This
         # prevents crashing if user rolls back HA version after a new property
         # was added.
 
+        # First pass: analyze what groups we have
         for group_dict in data.get("groups", []):
-            policy: PolicyType | None = None
-
             if group_dict["id"] == GROUP_ID_ADMIN:
                 has_admin_group = True
-
-                name = GROUP_NAME_ADMIN
-                policy = system_policies.ADMIN_POLICY
-                system_generated = True
-
             elif group_dict["id"] == GROUP_ID_USER:
                 has_user_group = True
-
-                name = GROUP_NAME_USER
-                policy = system_policies.USER_POLICY
-                system_generated = True
-
             elif group_dict["id"] == GROUP_ID_READ_ONLY:
                 has_read_only_group = True
-
-                name = GROUP_NAME_READ_ONLY
-                policy = system_policies.READ_ONLY_POLICY
-                system_generated = True
-
-            else:
-                name = group_dict["name"]
-                policy = group_dict.get("policy")
-                system_generated = False
-
-            # We don't want groups without a policy that are not system groups
-            # This is part of migrating from state 1
-            if policy is None:
+            elif group_dict.get("policy") is None:
                 group_without_policy = group_dict["id"]
-                continue
-
-            groups[group_dict["id"]] = models.Group(
-                id=group_dict["id"],
-                name=name,
-                policy=policy,
-                system_generated=system_generated,
-            )
 
         # If there are no groups, add all existing users to the admin group.
         # This is part of migrating from state 2
@@ -399,6 +391,12 @@ class AuthStore:
         # This is part of migrating from state 1
         if groups and group_without_policy is not None:
             group_without_policy = None
+
+        # Second pass: create group objects
+        for group_dict in data.get("groups", []):
+            group = self._create_group_from_dict(group_dict, group_without_policy)
+            if group is not None:
+                groups[group.id] = group
 
         # This is part of migrating from state 1 and 2
         if not has_admin_group:
@@ -414,8 +412,75 @@ class AuthStore:
             user_group = _system_user_group()
             groups[user_group.id] = user_group
 
+        migration_state: dict[str, Any] = {
+            "group_without_policy": group_without_policy,
+            "migrate_users_to_admin_group": migrate_users_to_admin_group,
+        }
+
+        return groups, migration_state
+
+    def _create_group_from_dict(
+        self, group_dict: dict[str, Any], group_without_policy: str | None
+    ) -> models.Group | None:
+        """Create a group from dictionary data.
+
+        When creating objects we mention each attribute explicitly. This
+        prevents crashing if user rolls back HA version after a new property
+        was added.
+        """
+
+        group_id = group_dict["id"]
+
+        name: str
+        policy: dict[str, Any] | None
+        system_generated: bool
+
+        if group_id == GROUP_ID_ADMIN:
+            name = GROUP_NAME_ADMIN
+            policy = system_policies.ADMIN_POLICY
+            system_generated = True
+        elif group_id == GROUP_ID_USER:
+            name = GROUP_NAME_USER
+            policy = system_policies.USER_POLICY
+            system_generated = True
+        elif group_id == GROUP_ID_READ_ONLY:
+            name = GROUP_NAME_READ_ONLY
+            policy = system_policies.READ_ONLY_POLICY
+            system_generated = True
+        else:
+            name = group_dict["name"]
+            policy = group_dict.get("policy")
+            system_generated = False
+
+        # We don't want groups without a policy that are not system groups
+        # This is part of migrating from state 1
+        if policy is None:
+            return None
+
+        return models.Group(
+            id=group_id,
+            name=name,
+            policy=policy,
+            system_generated=system_generated,
+        )
+
+    def _load_and_migrate_users(
+        self,
+        data: dict[str, Any],
+        groups: dict[str, models.Group],
+        perm_lookup: PermissionLookup,
+        migration_state: dict[str, Any],
+    ) -> dict[str, models.User]:
+        """Load users from data and handle group migration."""
+        users: dict[str, models.User] = {}
+
+        group_without_policy = migration_state.get("group_without_policy")
+        migrate_users_to_admin_group: bool = migration_state.get(
+            "migrate_users_to_admin_group", False
+        )
+
         for user_dict in data["users"]:
-            # Collect the users group.
+            # Collect the user's groups
             user_groups = []
             for group_id in user_dict.get("group_ids", []):
                 # This is part of migrating from state 1
@@ -439,7 +504,13 @@ class AuthStore:
                 local_only=user_dict.get("local_only", False),
             )
 
-        for cred_dict in data["credentials"]:
+        return users
+
+    def _load_credentials(
+        self, data: dict[str, Any], users: dict[str, models.User]
+    ) -> None:
+        """Load credentials from data and attach to users."""
+        for cred_dict in data.get("credentials", []):
             credential = models.Credentials(
                 id=cred_dict["id"],
                 is_new=False,
@@ -447,64 +518,78 @@ class AuthStore:
                 auth_provider_id=cred_dict["auth_provider_id"],
                 data=cred_dict["data"],
             )
-            credentials[cred_dict["id"]] = credential
             users[cred_dict["user_id"]].credentials.append(credential)
 
-        for rt_dict in data["refresh_tokens"]:
-            # Filter out the old keys that don't have jwt_key (pre-0.76)
-            if "jwt_key" not in rt_dict:
-                continue
+    def _load_refresh_tokens(
+        self, data: dict[str, Any], users: dict[str, models.User]
+    ) -> None:
+        """Load refresh tokens from data and attach to users."""
+        for rt_dict in data.get("refresh_tokens", []):
+            token = self._create_refresh_token_from_dict(rt_dict, users)
+            if token is not None:
+                users[rt_dict["user_id"]].refresh_tokens[token.id] = token
 
-            created_at = dt_util.parse_datetime(rt_dict["created_at"])
-            if created_at is None:
-                getLogger(__name__).error(
-                    (
-                        "Ignoring refresh token %(id)s with invalid created_at "
-                        "%(created_at)s for user_id %(user_id)s"
-                    ),
-                    rt_dict,
-                )
-                continue
+    def _create_refresh_token_from_dict(
+        self,
+        rt_dict: dict[str, Any],
+        users: dict[str, models.User],
+    ) -> models.RefreshToken | None:
+        """Create a refresh token from dictionary data."""
+        # Filter out the old keys that don't have jwt_key (pre-0.76)
+        if "jwt_key" not in rt_dict:
+            return None
 
-            if (token_type := rt_dict.get("token_type")) is None:
-                if rt_dict["client_id"] is None:
-                    token_type = models.TOKEN_TYPE_SYSTEM
-                else:
-                    token_type = models.TOKEN_TYPE_NORMAL
-
-            # old refresh_token don't have last_used_at (pre-0.78)
-            if last_used_at_str := rt_dict.get("last_used_at"):
-                last_used_at = dt_util.parse_datetime(last_used_at_str)
-            else:
-                last_used_at = None
-
-            token = models.RefreshToken(
-                id=rt_dict["id"],
-                user=users[rt_dict["user_id"]],
-                client_id=rt_dict["client_id"],
-                # use dict.get to keep backward compatibility
-                client_name=rt_dict.get("client_name"),
-                client_icon=rt_dict.get("client_icon"),
-                token_type=token_type,
-                created_at=created_at,
-                access_token_expiration=timedelta(
-                    seconds=rt_dict["access_token_expiration"]
+        created_at = dt_util.parse_datetime(rt_dict["created_at"])
+        if created_at is None:
+            getLogger(__name__).error(
+                (
+                    "Ignoring refresh token %(id)s with invalid created_at "
+                    "%(created_at)s for user_id %(user_id)s"
                 ),
-                token=rt_dict["token"],
-                jwt_key=rt_dict["jwt_key"],
-                last_used_at=last_used_at,
-                last_used_ip=rt_dict.get("last_used_ip"),
-                expire_at=rt_dict.get("expire_at"),
-                version=rt_dict.get("version"),
+                rt_dict,
             )
-            if "credential_id" in rt_dict:
-                token.credential = credentials.get(rt_dict["credential_id"])
-            users[rt_dict["user_id"]].refresh_tokens[token.id] = token
+            return None
 
-        self._groups = groups
-        self._users = users
-        self._build_token_id_to_user_id()
-        self._async_schedule_save(INITIAL_LOAD_SAVE_DELAY)
+        if (token_type := rt_dict.get("token_type")) is None:
+            if rt_dict["client_id"] is None:
+                token_type = models.TOKEN_TYPE_SYSTEM
+            else:
+                token_type = models.TOKEN_TYPE_NORMAL
+
+        # old refresh_token don't have last_used_at (pre-0.78)
+        if last_used_at_str := rt_dict.get("last_used_at"):
+            last_used_at = dt_util.parse_datetime(last_used_at_str)
+        else:
+            last_used_at = None
+
+        token = models.RefreshToken(
+            id=rt_dict["id"],
+            user=users[rt_dict["user_id"]],
+            client_id=rt_dict["client_id"],
+            # use dict.get to keep backward compatibility
+            client_name=rt_dict.get("client_name"),
+            client_icon=rt_dict.get("client_icon"),
+            token_type=token_type,
+            created_at=created_at,
+            access_token_expiration=timedelta(
+                seconds=rt_dict["access_token_expiration"]
+            ),
+            token=rt_dict["token"],
+            jwt_key=rt_dict["jwt_key"],
+            last_used_at=last_used_at,
+            last_used_ip=rt_dict.get("last_used_ip"),
+            expire_at=rt_dict.get("expire_at"),
+            version=rt_dict.get("version"),
+        )
+
+        if "credential_id" in rt_dict:
+            # Find the credential from the user's credentials list
+            for cred in users[rt_dict["user_id"]].credentials:
+                if cred.id == rt_dict["credential_id"]:
+                    token.credential = cred
+                    break
+
+        return token
 
     @callback
     def _build_token_id_to_user_id(self) -> None:
