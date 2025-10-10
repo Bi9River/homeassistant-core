@@ -52,6 +52,12 @@ from . import BuienRadarConfigEntry
 from .const import (
     CONF_TIMEFRAME,
     DEFAULT_TIMEFRAME,
+    ICON_COMPASS,
+    ICON_GAUGE,
+    ICON_PARTLY_CLOUDY,
+    ICON_POURING,
+    ICON_WINDY,
+    MSG_NO_FORECAST,
     STATE_CONDITION_CODES,
     STATE_CONDITIONS,
     STATE_DETAILED_CONDITIONS,
@@ -59,16 +65,6 @@ from .const import (
 from .util import BrData
 
 _LOGGER = logging.getLogger(__name__)
-
-# Icon constants
-ICON_GAUGE = "mdi:gauge"
-ICON_WINDY = "mdi:weather-windy"
-ICON_COMPASS = "mdi:compass-outline"
-ICON_POURING = "mdi:weather-pouring"
-ICON_PARTLY_CLOUDY = "mdi:weather-partly-cloudy"
-
-# Log message constants
-MSG_NO_FORECAST = "No forecast for fcday=%s"
 
 MEASURED_LABEL = "Measured"
 TIMEFRAME_LABEL = "Timeframe"

@@ -21,6 +21,16 @@ SCHEDULE_NOK = 2
 
 STATE_CONDITIONS = ["clear", "cloudy", "fog", "rainy", "snowy", "lightning"]
 
+# Icon constants
+ICON_GAUGE = "mdi:gauge"
+ICON_WINDY = "mdi:weather-windy"
+ICON_COMPASS = "mdi:compass-outline"
+ICON_POURING = "mdi:weather-pouring"
+ICON_PARTLY_CLOUDY = "mdi:weather-partly-cloudy"
+
+# Log message constants
+MSG_NO_FORECAST = "No forecast for fcday=%s"
+
 STATE_DETAILED_CONDITIONS = [
     "clear",
     "partlycloudy",
