@@ -848,6 +848,25 @@ class BrSensor(SensorEntity):
             )
 
     @callback
+    def _update_extra_attributes(self, data: dict) -> None:
+        """Update extra state attributes."""
+        result = {
+            ATTR_ATTRIBUTION: data.get(ATTRIBUTION),
+            STATIONNAME_LABEL: data.get(STATIONNAME),
+        }
+        if self._measured is not None:
+            local_dt = dt_util.as_local(self._measured)
+            result[MEASURED_LABEL] = local_dt.strftime("%c")
+
+        sensor_type = self.entity_description.key
+
+        if sensor_type.startswith(PRECIPITATION_FORECAST):
+            if self._timeframe is not None:
+                result[TIMEFRAME_LABEL] = f"{self._timeframe} min"
+
+        self._attr_extra_state_attributes = result
+
+    @callback
     def _load_data(self, data):
         """Load the sensor with relevant data."""
         # Check if we have a new measurement,
@@ -857,43 +876,32 @@ class BrSensor(SensorEntity):
 
         self._measured = data.get(MEASURED)
         sensor_type = self.entity_description.key
+        is_value_updated = False
 
         if sensor_type.endswith(("_1d", "_2d", "_3d", "_4d", "_5d")):
-            # update forecasting sensors:
-            fcday = 0
-            if sensor_type.endswith("_2d"):
-                fcday = 1
-            if sensor_type.endswith("_3d"):
-                fcday = 2
-            if sensor_type.endswith("_4d"):
-                fcday = 3
-            if sensor_type.endswith("_5d"):
-                fcday = 4
+            fcday = int(sensor_type[-2]) - 1
 
-            # update weather symbol & status text
-            if sensor_type.startswith((SYMBOL, CONDITION)):
-                condition = None
-                try:
+            try:
+                # update weather symbol & status text
+                if sensor_type.startswith((SYMBOL, CONDITION)):
                     condition = data.get(FORECAST)[fcday].get(CONDITION)
-                except IndexError:
-                    _LOGGER.warning(MSG_NO_FORECAST, fcday)
-                    return False
+                    is_value_updated = self._update_forecast_condition(
+                        condition, sensor_type
+                    )
 
-                return self._update_forecast_condition(condition, sensor_type)
-
-            if sensor_type.startswith(WINDSPEED):
-                # hass wants windspeeds in km/h not m/s, so convert:
-                try:
+                elif sensor_type.startswith(WINDSPEED):
+                    # hass wants windspeeds in km/h not m/s, so convert:
+                    raw_value = data.get(FORECAST)[fcday].get(sensor_type[:-3])
+                    self._attr_native_value = self._convert_windspeed_kph(raw_value)
+                    is_value_updated = True
+                else:
                     self._attr_native_value = data.get(FORECAST)[fcday].get(
                         sensor_type[:-3]
                     )
-                except IndexError:
-                    _LOGGER.warning(MSG_NO_FORECAST, fcday)
-                    return False
-
-                if self.state is not None:
-                    self._attr_native_value = round(self.state * 3.6, 1)
-                return True
+                    is_value_updated = True
+            except IndexError:
+                _LOGGER.warning(MSG_NO_FORECAST, fcday)
+                is_value_updated = False
 
             # update all other sensors
             try:
@@ -902,44 +910,31 @@ class BrSensor(SensorEntity):
                 )
             except IndexError:
                 _LOGGER.warning(MSG_NO_FORECAST, fcday)
-                return False
+                is_value_updated = False
             return True
 
         if sensor_type == SYMBOL or sensor_type.startswith(CONDITION):
             # update weather symbol & status text
-            return self._update_current_condition(data, sensor_type)
+            is_value_updated = self._update_current_condition(data, sensor_type)
 
-        if sensor_type.startswith(PRECIPITATION_FORECAST):
+        elif sensor_type.startswith(PRECIPITATION_FORECAST):
             self._update_precipitation_forecast(data, sensor_type)
-            return True
+            is_value_updated = True
 
-        if sensor_type in [WINDSPEED, WINDGUST]:
+        elif sensor_type in [WINDSPEED, WINDGUST]:
             raw_value = data.get(sensor_type)
             self._attr_native_value = self._convert_windspeed_kph(raw_value)
-            return True
+            is_value_updated = True
 
-        if sensor_type == VISIBILITY:
+        elif sensor_type == VISIBILITY:
             raw_value = data.get(sensor_type)
             self._attr_native_value = self._convert_visibility_km(raw_value)
-            return True
+            is_value_updated = True
 
-        # update all other sensors
-        self._attr_native_value = data.get(sensor_type)
-        if sensor_type.startswith(PRECIPITATION_FORECAST):
-            result = {ATTR_ATTRIBUTION: data.get(ATTRIBUTION)}
-            if self._timeframe is not None:
-                result[TIMEFRAME_LABEL] = f"{self._timeframe} min"
+        else:
+            self._attr_native_value = data.get(sensor_type)
+            is_value_updated = True
 
-            self._attr_extra_state_attributes = result
+        self._update_extra_attributes(data)
 
-        result = {
-            ATTR_ATTRIBUTION: data.get(ATTRIBUTION),
-            STATIONNAME_LABEL: data.get(STATIONNAME),
-        }
-        if self._measured is not None:
-            # convert datetime (Europe/Amsterdam) into local datetime
-            local_dt = dt_util.as_local(self._measured)
-            result[MEASURED_LABEL] = local_dt.strftime("%c")
-
-        self._attr_extra_state_attributes = result
-        return True
+        return is_value_updated
