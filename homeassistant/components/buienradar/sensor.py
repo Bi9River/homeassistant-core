@@ -848,6 +848,14 @@ class BrSensor(SensorEntity):
         return False
 
     @callback
+    def _update_precipitation_forecast(self, data: dict, sensor_type: str) -> None:
+        if nested := data.get(PRECIPITATION_FORECAST):
+            self._timeframe = nested.get(TIMEFRAME)
+            self._attr_native_value = nested.get(
+                sensor_type[len(PRECIPITATION_FORECAST) + 1 :]
+            )
+
+    @callback
     def _load_data(self, data):
         """Load the sensor with relevant data."""
         # Check if we have a new measurement,
@@ -910,12 +918,7 @@ class BrSensor(SensorEntity):
             return self._update_current_condition(data, sensor_type)
 
         if sensor_type.startswith(PRECIPITATION_FORECAST):
-            # update nested precipitation forecast sensors
-            nested = data.get(PRECIPITATION_FORECAST)
-            self._timeframe = nested.get(TIMEFRAME)
-            self._attr_native_value = nested.get(
-                sensor_type[len(PRECIPITATION_FORECAST) + 1 :]
-            )
+            self._update_precipitation_forecast(data, sensor_type)
             return True
 
         if sensor_type in [WINDSPEED, WINDGUST]:
