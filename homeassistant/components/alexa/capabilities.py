@@ -1503,6 +1503,7 @@ class AlexaModeController(AlexaCapability):
         return None
 
     def _fan_capability_resource(self) -> dict[str, list[dict[str, Any]]]:
+        """Return capabilityResources object of fan direction."""
         self._resource = AlexaModeResource(
             [AlexaGlobalCatalog.SETTING_DIRECTION], False
         )
