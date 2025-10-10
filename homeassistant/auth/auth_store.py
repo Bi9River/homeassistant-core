@@ -58,7 +58,7 @@ class AuthStore:
         self._loaded = False
         self._users: dict[str, models.User] = None  # type: ignore[assignment]
         self._groups: dict[str, models.Group] = None  # type: ignore[assignment]
-        self._perm_lookup: PermissionLookup = None  # type: ignore[assignment]
+        self._perm_lookup: PermissionLookup | None = None
         self._store = Store[dict[str, list[dict[str, Any]]]](
             hass, STORAGE_VERSION, STORAGE_KEY, private=True, atomic_writes=True
         )
@@ -317,6 +317,7 @@ class AuthStore:
             raise RuntimeError("Auth storage is already loaded")
         self._loaded = True
 
+        # Initialize registries and permission lookup
         dev_reg = dr.async_get(self.hass)
         ent_reg = er.async_get(self.hass)
         data = await self._store.async_load()
