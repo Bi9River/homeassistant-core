@@ -789,6 +789,18 @@ class BrSensor(SensorEntity):
         if self._load_data(self._data.data):
             self.async_write_ha_state()
 
+    def _convert_windspeed_kph(self, value_ms: float | None) -> float | None:
+        """Convert windspeed from m/s to km/h."""
+        if value_ms is not None:
+            return round(value_ms * 3.6, 1)
+        return None
+
+    def _convert_visibility_km(self, value_m: int | None) -> float | None:
+        """Convert visibility from m to km."""
+        if value_m is not None:
+            return round(value_m / 1000, 1)
+        return None
+
     @callback
     def _load_data(self, data):  # noqa: C901
         """Load the sensor with relevant data."""
@@ -896,17 +908,13 @@ class BrSensor(SensorEntity):
             return True
 
         if sensor_type in [WINDSPEED, WINDGUST]:
-            # hass wants windspeeds in km/h not m/s, so convert:
-            self._attr_native_value = data.get(sensor_type)
-            if self.state is not None:
-                self._attr_native_value = round(data.get(sensor_type) * 3.6, 1)
+            raw_value = data.get(sensor_type)
+            self._attr_native_value = self._convert_windspeed_kph(raw_value)
             return True
 
         if sensor_type == VISIBILITY:
-            # hass wants visibility in km (not m), so convert:
-            self._attr_native_value = data.get(sensor_type)
-            if self.state is not None:
-                self._attr_native_value = round(self.state / 1000, 1)
+            raw_value = data.get(sensor_type)
+            self._attr_native_value = self._convert_visibility_km(raw_value)
             return True
 
         # update all other sensors
