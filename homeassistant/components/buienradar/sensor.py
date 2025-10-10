@@ -911,9 +911,8 @@ class BrSensor(SensorEntity):
             except IndexError:
                 _LOGGER.warning(MSG_NO_FORECAST, fcday)
                 is_value_updated = False
-            return True
 
-        if sensor_type == SYMBOL or sensor_type.startswith(CONDITION):
+        elif sensor_type == SYMBOL or sensor_type.startswith(CONDITION):
             # update weather symbol & status text
             is_value_updated = self._update_current_condition(data, sensor_type)
 
@@ -935,6 +934,7 @@ class BrSensor(SensorEntity):
             self._attr_native_value = data.get(sensor_type)
             is_value_updated = True
 
-        self._update_extra_attributes(data)
+        if is_value_updated:
+            self._update_extra_attributes(data)
 
         return is_value_updated
