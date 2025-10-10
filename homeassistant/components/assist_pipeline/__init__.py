@@ -47,27 +47,27 @@ from .pipeline import (
 from .websocket_api import async_register_websocket_api
 
 __all__ = (
+    "AudioSettings",
+    "AudioStreamPipelineConfig",
     "DOMAIN",
     "EVENT_RECORDING",
     "OPTION_PREFERRED",
-    "SAMPLES_PER_CHUNK",
-    "SAMPLE_CHANNELS",
-    "SAMPLE_RATE",
-    "SAMPLE_WIDTH",
-    "AudioSettings",
     "Pipeline",
     "PipelineEvent",
     "PipelineEventType",
     "PipelineNotFound",
+    "SAMPLES_PER_CHUNK",
+    "SAMPLE_CHANNELS",
+    "SAMPLE_RATE",
+    "SAMPLE_WIDTH",
     "WakeWordSettings",
-    # Expose the new configuration dataclass so callers can construct it
-    "AudioStreamPipelineConfig",
     "async_create_default_pipeline",
     "async_get_pipelines",
     "async_pipeline_from_audio_stream",
     "async_setup",
     "async_update_pipeline",
 )
+
 
 
 # `AudioStreamPipelineConfig` groups the many parameters needed by
