@@ -70,7 +70,7 @@ class BrData:
         self.timeframe = timeframe
         self.unsub_schedule_update: CALLBACK_TYPE | None = None
 
-    def update_devices(self):
+    async def update_devices(self):
         """Update all devices/sensors."""
         if not self.devices:
             return
