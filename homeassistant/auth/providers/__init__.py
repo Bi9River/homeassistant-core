@@ -180,15 +180,15 @@ async def load_auth_provider_module(
 
     if (processed := hass.data.get(DATA_REQS)) is None:
         processed = hass.data[DATA_REQS] = set()
-    elif provider in processed:
-        return module
 
-    reqs = module.REQUIREMENTS
-    await requirements.async_process_requirements(
-        hass, f"auth provider {provider}", reqs
-    )
+    # Remove redundant early return to improve code maintainability
+    if provider not in processed:
+        reqs = module.REQUIREMENTS
+        await requirements.async_process_requirements(
+            hass, f"auth provider {provider}", reqs
+        )
+        processed.add(provider)
 
-    processed.add(provider)
     return module
 
 
