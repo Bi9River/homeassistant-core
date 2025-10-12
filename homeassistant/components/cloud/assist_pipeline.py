@@ -4,6 +4,7 @@ import asyncio
 from typing import Any
 
 from homeassistant.components.assist_pipeline import (
+    PipelineUpdate,
     async_create_default_pipeline,
     async_get_pipelines,
     async_setup_pipeline_store,
@@ -103,4 +104,5 @@ async def async_migrate_cloud_pipeline_engine(
     pipelines = async_get_pipelines(hass)
     for pipeline in pipelines:
         if getattr(pipeline, pipeline_attribute) == DOMAIN:
-            await async_update_pipeline(hass, pipeline, **kwargs)
+            update = PipelineUpdate(**kwargs)
+            await async_update_pipeline(hass, pipeline, update)
