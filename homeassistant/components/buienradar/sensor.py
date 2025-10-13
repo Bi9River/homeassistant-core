@@ -906,17 +906,26 @@ class BrSensor(SensorEntity):
                         condition, sensor_type
                     )
 
-                elif sensor_type.startswith(WINDSPEED):
-                    # Home Assistant expects windspeeds in km/h, not m/s, so convert:
-                    raw_value = data.get(FORECAST)[fcday].get(sensor_type[:-3])
-                    self._attr_native_value = self._convert_windspeed_kph(raw_value)
-                    is_value_updated = True
                 else:
-                    # Update all other forecast sensors with raw data
-                    self._attr_native_value = data.get(FORECAST)[fcday].get(
-                        sensor_type[:-3]
-                    )
-                    is_value_updated = True
+                    base_key = sensor_type[:-3]
+                    # handle wind speed sensors (convert from m/s to km/h)
+                    if sensor_type.startswith(WINDSPEED):
+                        raw_value = data.get(FORECAST)[fcday].get(base_key)
+                        self._attr_native_value = self._convert_windspeed_kph(raw_value)
+                        is_value_updated = True
+
+                    # handle visibility sensor (convert from meters to kilometers)
+                    elif base_key == VISIBILITY or sensor_type == f"{VISIBILITY}_1d":
+                        raw_value = data.get(FORECAST)[fcday].get(base_key)
+                        self._attr_native_value = self._convert_visibility_km(raw_value)
+                        is_value_updated = True
+
+                    # handle all other sensors with direct data assignment
+                    else:
+                        self._attr_native_value = data.get(FORECAST)[fcday].get(
+                            base_key
+                        )
+                        is_value_updated = True
             except IndexError:
                 _LOGGER.warning(MSG_NO_FORECAST, fcday)
                 is_value_updated = False
