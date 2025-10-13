@@ -1689,104 +1689,37 @@ class PipelineInput:
         self.run.start(
             conversation_id=self.session.conversation_id, device_id=self.device_id
         )
-        current_stage: PipelineStage | None = self.run.start_stage
-        stt_audio_buffer: list[EnhancedAudioChunk] = []
-        stt_processed_stream: AsyncIterable[EnhancedAudioChunk] | None = None
-
-        if self.stt_stream is not None:
-            if self.run.audio_settings.needs_processor:
-                # VAD/noise suppression/auto gain/volume
-                stt_processed_stream = self.run.process_enhance_audio(self.stt_stream)
-            else:
-                # Volume multiplier only
-                stt_processed_stream = self.run.process_volume_only(self.stt_stream)
 
         try:
-            if current_stage == PipelineStage.WAKE_WORD:
-                # wake-word-detection
-                assert stt_processed_stream is not None
-                detect_result = await self.run.wake_word_detection(
-                    stt_processed_stream, stt_audio_buffer
-                )
-                if detect_result is None:
-                    # No wake word. Abort the rest of the pipeline.
-                    return
+            # Prepare audio stream
+            stt_processed_stream = self._prepare_audio_stream()
+            stt_audio_buffer: list[EnhancedAudioChunk] = []
 
-                current_stage = PipelineStage.STT
+            # Execute pipeline stages in sequence
+            if not await self._execute_wake_word_stage(
+                stt_processed_stream, stt_audio_buffer
+            ):
+                return
 
-            # speech-to-text
-            intent_input = self.intent_input
-            if current_stage == PipelineStage.STT:
-                assert self.stt_metadata is not None
-                assert stt_processed_stream is not None
+            intent_input = await self._execute_stt_stage(
+                stt_processed_stream, stt_audio_buffer
+            )
 
-                if self.wake_word_phrase is not None:
-                    # Avoid duplicate wake-ups by checking cooldown
-                    last_wake_up = self.run.hass.data[DATA_LAST_WAKE_UP].get(
-                        self.wake_word_phrase
-                    )
-                    if last_wake_up is not None:
-                        sec_since_last_wake_up = time.monotonic() - last_wake_up
-                        if sec_since_last_wake_up < WAKE_WORD_COOLDOWN:
-                            _LOGGER.debug(
-                                "Speech-to-text cancelled to avoid duplicate wake-up for %s",
-                                self.wake_word_phrase,
-                            )
-                            raise DuplicateWakeUpDetectedError(self.wake_word_phrase)
+            if self.run.end_stage == PipelineStage.STT:
+                return
 
-                    # Record last wake up time to block duplicate detections
-                    self.run.hass.data[DATA_LAST_WAKE_UP][self.wake_word_phrase] = (
-                        time.monotonic()
-                    )
+            # If we haven't executed STT, use the provided intent_input
+            if intent_input is None:
+                intent_input = self.intent_input
 
-                stt_input_stream = stt_processed_stream
+            tts_input = await self._execute_intent_stage(intent_input)
 
-                if stt_audio_buffer:
-                    # Send audio in the buffer first to speech-to-text, then move on to stt_stream.
-                    # This is basically an async itertools.chain.
-                    async def buffer_then_audio_stream() -> AsyncGenerator[
-                        EnhancedAudioChunk
-                    ]:
-                        # Buffered audio
-                        for chunk in stt_audio_buffer:
-                            yield chunk
-
-                        # Streamed audio
-                        assert stt_processed_stream is not None
-                        async for chunk in stt_processed_stream:
-                            yield chunk
-
-                    stt_input_stream = buffer_then_audio_stream()
-
-                intent_input = await self.run.speech_to_text(
-                    self.stt_metadata,
-                    stt_input_stream,
-                )
-                current_stage = PipelineStage.INTENT
-
-            if self.run.end_stage != PipelineStage.STT:
-                tts_input = self.tts_input
-
-                if current_stage == PipelineStage.INTENT:
-                    # intent-recognition
-                    assert intent_input is not None
-                    tts_input = await self.run.recognize_intent(
-                        intent_input,
-                        self.session.conversation_id,
-                        self.device_id,
-                        self.conversation_extra_system_prompt,
-                    )
-                    if tts_input.strip():
-                        current_stage = PipelineStage.TTS
-                    else:
-                        # Skip TTS
-                        current_stage = PipelineStage.END
-
-                if self.run.end_stage != PipelineStage.INTENT:
-                    # text-to-speech
-                    if current_stage == PipelineStage.TTS:
-                        assert tts_input is not None
-                        await self.run.text_to_speech(tts_input)
+            if (
+                self.run.end_stage != PipelineStage.INTENT
+                and tts_input
+                and tts_input.strip()
+            ):
+                await self._execute_tts_stage(tts_input)
 
         except PipelineError as err:
             self.run.process_event(
@@ -1796,9 +1729,107 @@ class PipelineInput:
                 )
             )
         finally:
-            # Always end the run since it needs to shut down the debug recording
-            # thread, etc.
             await self.run.end()
+
+    def _prepare_audio_stream(self) -> AsyncIterable[EnhancedAudioChunk] | None:
+        """Prepare audio stream with appropriate processing."""
+        if self.stt_stream is None:
+            return None
+
+        if self.run.audio_settings.needs_processor:
+            return self.run.process_enhance_audio(self.stt_stream)
+        return self.run.process_volume_only(self.stt_stream)
+
+    async def _execute_wake_word_stage(
+        self,
+        stt_processed_stream: AsyncIterable[EnhancedAudioChunk] | None,
+        stt_audio_buffer: list[EnhancedAudioChunk],
+    ) -> bool:
+        """Execute wake word detection stage. Returns True if detected."""
+        if self.run.start_stage != PipelineStage.WAKE_WORD:
+            return True
+
+        assert stt_processed_stream is not None
+        detect_result = await self.run.wake_word_detection(
+            stt_processed_stream, stt_audio_buffer
+        )
+        return detect_result is not None
+
+    async def _execute_stt_stage(
+        self,
+        stt_processed_stream: AsyncIterable[EnhancedAudioChunk] | None,
+        stt_audio_buffer: list[EnhancedAudioChunk],
+    ) -> str | None:
+        """Execute speech-to-text stage. Returns recognized text or None if skipped."""
+        if self.run.start_stage != PipelineStage.STT:
+            return None
+
+        assert self.stt_metadata is not None
+        assert stt_processed_stream is not None
+
+        self._check_and_record_wake_up_cooldown()
+
+        stt_input_stream = await self._build_stt_input_stream(
+            stt_processed_stream, stt_audio_buffer
+        )
+
+        return await self.run.speech_to_text(self.stt_metadata, stt_input_stream)
+
+    def _check_and_record_wake_up_cooldown(self) -> None:
+        """Check wake-up cooldown to avoid duplicate detections."""
+        if self.wake_word_phrase is None:
+            return
+
+        last_wake_up = self.run.hass.data[DATA_LAST_WAKE_UP].get(self.wake_word_phrase)
+        if last_wake_up is not None:
+            sec_since_last_wake_up = time.monotonic() - last_wake_up
+            if sec_since_last_wake_up < WAKE_WORD_COOLDOWN:
+                _LOGGER.debug(
+                    "Speech-to-text cancelled to avoid duplicate wake-up for %s",
+                    self.wake_word_phrase,
+                )
+                raise DuplicateWakeUpDetectedError(self.wake_word_phrase)
+
+        self.run.hass.data[DATA_LAST_WAKE_UP][self.wake_word_phrase] = time.monotonic()
+
+    async def _build_stt_input_stream(
+        self,
+        stt_processed_stream: AsyncIterable[EnhancedAudioChunk],
+        stt_audio_buffer: list[EnhancedAudioChunk],
+    ) -> AsyncIterable[EnhancedAudioChunk]:
+        """Build speech-to-text input stream, combining buffer and streamed audio."""
+        if not stt_audio_buffer:
+            return stt_processed_stream
+
+        async def buffer_then_audio_stream() -> AsyncGenerator[EnhancedAudioChunk]:
+            for chunk in stt_audio_buffer:
+                yield chunk
+            async for chunk in stt_processed_stream:
+                yield chunk
+
+        return buffer_then_audio_stream()
+
+    async def _execute_intent_stage(self, intent_input: str | None) -> str:
+        """Execute intent recognition stage. Returns TTS input text.
+
+        If intent_input is None (e.g., when starting from TTS stage),
+        use the provided tts_input directly.
+        """
+        if intent_input is None:
+            # Skip intent stage, use provided TTS input
+            return self.tts_input or ""
+
+        return await self.run.recognize_intent(
+            intent_input,
+            self.session.conversation_id,
+            self.device_id,
+            self.conversation_extra_system_prompt,
+        )
+
+    async def _execute_tts_stage(self, tts_input: str) -> None:
+        """Execute text-to-speech stage."""
+        assert tts_input is not None
+        await self.run.text_to_speech(tts_input)
 
     async def validate(self) -> None:
         """Validate pipeline input against start stage."""
