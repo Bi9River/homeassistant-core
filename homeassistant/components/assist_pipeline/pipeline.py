@@ -1802,19 +1802,14 @@ class PipelineInput:
 
     async def validate(self) -> None:
         """Validate pipeline input against start stage."""
+        self._validate_start_stage()
+        self._validate_end_stage()
+        await self._prepare_stages()
+
+    def _validate_start_stage(self) -> None:
+        """Validate that required inputs are present for the start stage."""
         if self.run.start_stage in (PipelineStage.WAKE_WORD, PipelineStage.STT):
-            if self.run.pipeline.stt_engine is None:
-                raise PipelineRunValidationError(
-                    "the pipeline does not support speech-to-text"
-                )
-            if self.stt_metadata is None:
-                raise PipelineRunValidationError(
-                    "stt_metadata is required for speech-to-text"
-                )
-            if self.stt_stream is None:
-                raise PipelineRunValidationError(
-                    "stt_stream is required for speech-to-text"
-                )
+            self._validate_stt_inputs()
         elif self.run.start_stage == PipelineStage.INTENT:
             if self.intent_input is None:
                 raise PipelineRunValidationError(
@@ -1825,44 +1820,53 @@ class PipelineInput:
                 raise PipelineRunValidationError(
                     "tts_input is required for text-to-speech"
                 )
+
+    def _validate_stt_inputs(self) -> None:
+        """Validate that all speech-to-text inputs are present."""
+        if self.run.pipeline.stt_engine is None:
+            raise PipelineRunValidationError(
+                "the pipeline does not support speech-to-text"
+            )
+        if self.stt_metadata is None:
+            raise PipelineRunValidationError(
+                "stt_metadata is required for speech-to-text"
+            )
+        if self.stt_stream is None:
+            raise PipelineRunValidationError(
+                "stt_stream is required for speech-to-text"
+            )
+
+    def _validate_end_stage(self) -> None:
+        """Validate that the pipeline supports the end stage."""
         if self.run.end_stage == PipelineStage.TTS:
             if self.run.pipeline.tts_engine is None:
                 raise PipelineRunValidationError(
                     "the pipeline does not support text-to-speech"
                 )
 
-        start_stage_index = PIPELINE_STAGE_ORDER.index(self.run.start_stage)
-        end_stage_index = PIPELINE_STAGE_ORDER.index(self.run.end_stage)
+    def _is_stage_active(self, stage: PipelineStage) -> bool:
+        """Check if a stage falls within the start and end stages."""
+        start_index = PIPELINE_STAGE_ORDER.index(self.run.start_stage)
+        end_index = PIPELINE_STAGE_ORDER.index(self.run.end_stage)
+        stage_index = PIPELINE_STAGE_ORDER.index(stage)
+        return start_index <= stage_index <= end_index
 
+    async def _prepare_stages(self) -> None:
+        """Prepare stages that are active in the pipeline."""
         prepare_tasks = []
 
-        if (
-            start_stage_index
-            <= PIPELINE_STAGE_ORDER.index(PipelineStage.WAKE_WORD)
-            <= end_stage_index
-        ):
+        if self._is_stage_active(PipelineStage.WAKE_WORD):
             prepare_tasks.append(self.run.prepare_wake_word_detection())
 
-        if (
-            start_stage_index
-            <= PIPELINE_STAGE_ORDER.index(PipelineStage.STT)
-            <= end_stage_index
-        ):
-            # self.stt_metadata can't be None or we'd raise above
-            prepare_tasks.append(self.run.prepare_speech_to_text(self.stt_metadata))  # type: ignore[arg-type]
+        if self._is_stage_active(PipelineStage.STT):
+            prepare_tasks.append(
+                self.run.prepare_speech_to_text(self.stt_metadata)  # type: ignore[arg-type]
+            )
 
-        if (
-            start_stage_index
-            <= PIPELINE_STAGE_ORDER.index(PipelineStage.INTENT)
-            <= end_stage_index
-        ):
+        if self._is_stage_active(PipelineStage.INTENT):
             prepare_tasks.append(self.run.prepare_recognize_intent(self.session))
 
-        if (
-            start_stage_index
-            <= PIPELINE_STAGE_ORDER.index(PipelineStage.TTS)
-            <= end_stage_index
-        ):
+        if self._is_stage_active(PipelineStage.TTS):
             prepare_tasks.append(self.run.prepare_text_to_speech())
 
         if prepare_tasks:
