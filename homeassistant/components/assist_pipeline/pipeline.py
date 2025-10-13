@@ -1067,25 +1067,88 @@ class PipelineRun:
         device_id: str | None,
         conversation_extra_system_prompt: str | None,
     ) -> str:
-        """Run intent recognition portion of pipeline. Returns text to speak."""
+        """Run the intent recognition pipeline. Returns the text to be spoken."""
+        self._validate_preconditions()
+
+        input_language = self._determine_input_language()
+        self._emit_intent_start_event(
+            intent_input, conversation_id, device_id, input_language
+        )
+
+        try:
+            user_input = self._create_user_input(
+                intent_input=intent_input,
+                conversation_id=conversation_id,
+                device_id=device_id,
+                input_language=input_language,
+                system_prompt=conversation_extra_system_prompt,
+            )
+
+            # Try to resolve the intent via sentence triggers or local handlers first
+            (
+                intent_response,
+                agent_id,
+                processed_locally,
+            ) = await self._try_local_or_trigger_intents(user_input)
+
+            # Initialize TTS streaming queue if supported
+            tts_input_stream = self._init_tts_stream()
+
+            # Create chat log listener to handle incremental deltas (for streaming)
+            chat_log_delta_listener = self._create_chat_log_delta_listener(
+                tts_input_stream
+            )
+
+            # Continue the conversation either using a found intent or the fallback agent
+            conversation_result, speech = await self._handle_conversation(
+                user_input=user_input,
+                intent_response=intent_response,
+                agent_id=agent_id,
+                chat_log_delta_listener=chat_log_delta_listener,
+                tts_input_stream=tts_input_stream,
+            )
+
+        except Exception as src_error:  # noqa: BLE001
+            self._handle_intent_error(src_error)
+
+        # Finalize and log the conversation result
+        self._finalize_intent(
+            conversation_result=conversation_result,
+            processed_locally=processed_locally,
+            agent_id=agent_id,
+        )
+
+        return speech
+
+    # --------------------------------------------------------
+    # Smaller, focused helper methods to reduce complexity
+    # --------------------------------------------------------
+
+    def _validate_preconditions(self) -> None:
+        """Ensure that the intent agent and conversation data are initialized."""
         if self.intent_agent is None or self._conversation_data is None:
             raise RuntimeError("Recognize intent was not prepared")
 
+    def _determine_input_language(self) -> str:
+        """Decide which language should be used for intent recognition."""
         if self.pipeline.conversation_language == MATCH_ALL:
-            # LLMs support all languages ('*') so use languages from the
-            # pipeline for intent fallback.
-            #
-            # We prioritize the STT and TTS languages because they may be more
-            # specific, such as "zh-CN" instead of just "zh". This is necessary
-            # for languages whose intents are split out by region when
-            # preferring local intent matching.
-            input_language = (
+            # Prefer the most specific available language, e.g., "zh-CN" over "zh"
+            return (
                 self.pipeline.stt_language
                 or self.pipeline.tts_language
                 or self.pipeline.language
             )
-        else:
-            input_language = self.pipeline.conversation_language
+        return self.pipeline.conversation_language
+
+    def _emit_intent_start_event(
+        self,
+        intent_input: str,
+        conversation_id: str,
+        device_id: str | None,
+        input_language: str,
+    ) -> None:
+        """Emit a pipeline event marking the start of the intent recognition stage."""
+        assert self.intent_agent is not None  # Ensure it's not None for mypy
 
         self.process_event(
             PipelineEvent(
@@ -1101,201 +1164,247 @@ class PipelineRun:
             )
         )
 
-        try:
-            user_input = conversation.ConversationInput(
-                text=intent_input,
-                context=self.context,
-                conversation_id=conversation_id,
-                device_id=device_id,
-                language=input_language,
-                agent_id=self.intent_agent.id,
-                extra_system_prompt=conversation_extra_system_prompt,
+    def _create_user_input(
+        self,
+        intent_input: str,
+        conversation_id: str,
+        device_id: str | None,
+        input_language: str,
+        system_prompt: str | None,
+    ) -> conversation.ConversationInput:
+        """Create a ConversationInput object representing the user’s intent input."""
+        assert self.intent_agent is not None  # Ensure it's not None for mypy
+        return conversation.ConversationInput(
+            text=intent_input,
+            context=self.context,
+            conversation_id=conversation_id,
+            device_id=device_id,
+            language=input_language,
+            agent_id=self.intent_agent.id,
+            extra_system_prompt=system_prompt,
+        )
+
+    async def _try_local_or_trigger_intents(
+        self, user_input: conversation.ConversationInput
+    ) -> tuple[intent.IntentResponse | None, str, bool]:
+        """Try to handle the intent locally or via sentence triggers before LLM fallback."""
+        assert self.intent_agent is not None  # Ensure it's not None for mypy
+        agent_id = self.intent_agent.id
+        processed_locally = agent_id == conversation.HOME_ASSISTANT_AGENT
+        intent_response: intent.IntentResponse | None = None
+
+        # If already processed locally or limited to a single agent, skip
+        if processed_locally or self._intent_agent_only:
+            return intent_response, agent_id, processed_locally
+
+        # Try to resolve sentence triggers
+        trigger_text = await conversation.async_handle_sentence_triggers(
+            self.hass, user_input
+        )
+        if trigger_text is not None:
+            return (
+                self._create_trigger_response(trigger_text),
+                "sentence_trigger",
+                True,
             )
 
-            agent_id = self.intent_agent.id
-            processed_locally = agent_id == conversation.HOME_ASSISTANT_AGENT
-            intent_response: intent.IntentResponse | None = None
-            if not processed_locally and not self._intent_agent_only:
-                # Sentence triggers override conversation agent
-                if (
-                    trigger_response_text
-                    := await conversation.async_handle_sentence_triggers(
-                        self.hass, user_input
-                    )
-                ) is not None:
-                    # Sentence trigger matched
-                    agent_id = "sentence_trigger"
-                    processed_locally = True
-                    intent_response = intent.IntentResponse(
-                        self.pipeline.conversation_language
-                    )
-                    intent_response.async_set_speech(trigger_response_text)
+        # Apply intent filter if the LLM agent supports CONTROL features
+        assert self.intent_agent is not None  # Ensure it's not None for mypy
+        intent_filter: Callable[[conversation.RecognizeResult], bool] | None = None
+        if (
+            state := self.hass.states.get(self.intent_agent.id)
+        ) and state.attributes.get(
+            ATTR_SUPPORTED_FEATURES, 0
+        ) & conversation.ConversationEntityFeature.CONTROL:
+            intent_filter = _async_local_fallback_intent_filter  # Presumed available
 
-                intent_filter: Callable[[RecognizeResult], bool] | None = None
-                # If the LLM has API access, we filter out some sentences that are
-                # interfering with LLM operation.
-                if (
-                    intent_agent_state := self.hass.states.get(self.intent_agent.id)
-                ) and intent_agent_state.attributes.get(
-                    ATTR_SUPPORTED_FEATURES, 0
-                ) & conversation.ConversationEntityFeature.CONTROL:
-                    intent_filter = _async_local_fallback_intent_filter
+        # Try handling via local intents if configured to prefer them
+        if self.pipeline.prefer_local_intents:
+            local_resp = await conversation.async_handle_intents(
+                self.hass, user_input, intent_filter=intent_filter
+            )
+            if local_resp:
+                return local_resp, conversation.HOME_ASSISTANT_AGENT, True
 
-                # Try local intents
-                if (
-                    intent_response is None
-                    and self.pipeline.prefer_local_intents
-                    and (
-                        intent_response := await conversation.async_handle_intents(
-                            self.hass,
-                            user_input,
-                            intent_filter=intent_filter,
-                        )
-                    )
-                ):
-                    # Local intent matched
-                    agent_id = conversation.HOME_ASSISTANT_AGENT
-                    processed_locally = True
+        # Fallback to the main conversation agent
+        return intent_response, agent_id, processed_locally
 
-            if self.tts_stream and self.tts_stream.supports_streaming_input:
-                tts_input_stream: asyncio.Queue[str | None] | None = asyncio.Queue()
-            else:
-                tts_input_stream = None
-            chat_log_role = None
-            delta_character_count = 0
+    def _create_trigger_response(self, trigger_text: str) -> intent.IntentResponse:
+        """Create an IntentResponse from a matched sentence trigger."""
+        resp = intent.IntentResponse(self.pipeline.conversation_language)
+        resp.async_set_speech(trigger_text)
+        return resp
 
-            @callback
-            def chat_log_delta_listener(
-                chat_log: conversation.ChatLog, delta: dict
-            ) -> None:
-                """Handle chat log delta."""
-                self.process_event(
-                    PipelineEvent(
-                        PipelineEventType.INTENT_PROGRESS,
-                        {
-                            "chat_log_delta": delta,
-                        },
-                    )
+    def _init_tts_stream(self) -> asyncio.Queue | None:
+        """Initialize a queue for TTS streaming if supported by the TTS engine."""
+        if self.tts_stream and self.tts_stream.supports_streaming_input:
+            return asyncio.Queue()
+        return None
+
+    def _create_chat_log_delta_listener(
+        self, tts_input_stream: asyncio.Queue[str | None] | None
+    ) -> Callable[[conversation.ChatLog, dict], None]:
+        """Create a listener for incremental chat log updates (delta messages)."""
+        state: dict[str, str | None | int] = {
+            "chat_log_role": None,
+            "delta_character_count": 0,
+        }
+
+        @callback
+        def _listener(chat_log: conversation.ChatLog, delta: dict) -> None:
+            """Process incremental chat log updates and trigger TTS streaming if needed."""
+            self.process_event(
+                PipelineEvent(
+                    PipelineEventType.INTENT_PROGRESS,
+                    {"chat_log_delta": delta},
                 )
-                if tts_input_stream is None:
-                    return
+            )
+            if tts_input_stream is None:
+                return
 
-                nonlocal chat_log_role
+            # Track the current message role (user or assistant)
+            if role := delta.get("role"):
+                state["chat_log_role"] = role
 
-                if role := delta.get("role"):
-                    chat_log_role = role
+            # Only process assistant deltas for streaming
+            if state["chat_log_role"] != "assistant":
+                return
 
-                # We are only interested in assistant deltas
-                if chat_log_role != "assistant":
-                    return
+            content = delta.get("content")
+            if content:
+                tts_input_stream.put_nowait(content)
 
-                if content := delta.get("content"):
-                    tts_input_stream.put_nowait(content)
+            # Skip further checks if we already started streaming
+            if getattr(self, "_streamed_response_text", False):
+                return
 
-                if self._streamed_response_text:
-                    return
+            start_stream = False
 
-                nonlocal delta_character_count
-
-                # Streamed responses are not cached. That's why we only start streaming text after
-                # we have received enough characters that indicates it will be a long response
-                # or if we have received text, and then a tool call.
-
-                # Tool call after we already received text
-                start_streaming = delta_character_count > 0 and delta.get("tool_calls")
-
-                # Count characters in the content and test if we exceed streaming threshold
-                if not start_streaming and content:
-                    delta_character_count += len(content)
-                    start_streaming = delta_character_count > STREAM_RESPONSE_CHARS
-
-                if not start_streaming:
-                    return
-
-                self._streamed_response_text = True
-
-                self.process_event(
-                    PipelineEvent(
-                        PipelineEventType.INTENT_PROGRESS,
-                        {
-                            "tts_start_streaming": True,
-                        },
-                    )
-                )
-
-                async def tts_input_stream_generator() -> AsyncGenerator[str]:
-                    """Yield TTS input stream."""
-                    while (tts_input := await tts_input_stream.get()) is not None:
-                        yield tts_input
-
-                # Concatenate all existing queue items
-                parts = []
-                while not tts_input_stream.empty():
-                    parts.append(tts_input_stream.get_nowait())
-                tts_input_stream.put_nowait(
-                    "".join(
-                        # At this point parts is only strings, None indicates end of queue
-                        cast(list[str], parts)
-                    )
-                )
-
-                assert self.tts_stream is not None
-                self.tts_stream.async_set_message_stream(tts_input_stream_generator())
-
-            with (
-                chat_session.async_get_chat_session(
-                    self.hass, user_input.conversation_id
-                ) as session,
-                conversation.async_get_chat_log(
-                    self.hass,
-                    session,
-                    user_input,
-                    chat_log_delta_listener=chat_log_delta_listener,
-                ) as chat_log,
+            # Start streaming if we already saw text and now receive a tool call
+            delta_count = state["delta_character_count"]
+            if (
+                isinstance(delta_count, int)
+                and delta_count > 0
+                and delta.get("tool_calls")
             ):
-                # It was already handled, create response and add to chat history
-                if intent_response is not None:
-                    speech: str = intent_response.speech.get("plain", {}).get(
-                        "speech", ""
-                    )
-                    chat_log.async_add_assistant_content_without_tools(
-                        conversation.AssistantContent(
-                            agent_id=agent_id,
-                            content=speech,
-                        )
-                    )
-                    conversation_result = conversation.ConversationResult(
-                        response=intent_response,
-                        conversation_id=session.conversation_id,
-                    )
+                start_stream = True
 
-                else:
-                    # Fall back to pipeline conversation agent
-                    conversation_result = await conversation.async_converse(
-                        hass=self.hass,
-                        text=user_input.text,
-                        conversation_id=user_input.conversation_id,
-                        device_id=user_input.device_id,
-                        context=user_input.context,
-                        language=user_input.language,
-                        agent_id=user_input.agent_id,
-                        extra_system_prompt=user_input.extra_system_prompt,
-                    )
-                    speech = conversation_result.response.speech.get("plain", {}).get(
-                        "speech", ""
-                    )
-                    if tts_input_stream and self._streamed_response_text:
-                        tts_input_stream.put_nowait(None)
+            # Or if accumulated text exceeds streaming threshold
+            if not start_stream and content:
+                delta_count = state["delta_character_count"]
 
-        except Exception as src_error:
-            _LOGGER.exception("Unexpected error during intent recognition")
-            raise IntentRecognitionError(
-                code="intent-failed",
-                message="Unexpected error during intent recognition",
-            ) from src_error
+                # Ensure it's an int (skip None/str cases)
+                if not isinstance(delta_count, int):
+                    delta_count = 0
 
+                delta_count += len(content)
+                state["delta_character_count"] = delta_count
+
+                if delta_count > STREAM_RESPONSE_CHARS:
+                    start_stream = True
+
+            if not start_stream:
+                return
+
+            # Begin streaming mode
+            setattr(self, "_streamed_response_text", True)
+            self.process_event(
+                PipelineEvent(
+                    PipelineEventType.INTENT_PROGRESS, {"tts_start_streaming": True}
+                )
+            )
+
+            async def _generator() -> AsyncGenerator[str]:
+                """Yield text chunks for TTS streaming."""
+                while (chunk := await tts_input_stream.get()) is not None:
+                    yield chunk
+
+            # Flush any existing queued text before starting the stream
+            parts: list[str] = []
+            while not tts_input_stream.empty():
+                item = tts_input_stream.get_nowait()
+                if item is not None:
+                    parts.append(item)
+            tts_input_stream.put_nowait("".join(parts))
+
+            assert self.tts_stream is not None
+            self.tts_stream.async_set_message_stream(_generator())
+
+        return _listener
+
+    async def _handle_conversation(
+        self,
+        user_input: conversation.ConversationInput,
+        intent_response: intent.IntentResponse | None,
+        agent_id: str,
+        chat_log_delta_listener: Callable[
+            [conversation.ChatLog, dict[str, object]], None
+        ],
+        tts_input_stream: asyncio.Queue[str | None] | None,
+    ) -> tuple[conversation.ConversationResult, str]:
+        """Handle the conversation: use resolved intent or fallback to conversation agent."""
+        with (
+            chat_session.async_get_chat_session(
+                self.hass, user_input.conversation_id
+            ) as session,
+            conversation.async_get_chat_log(
+                self.hass,
+                session,
+                user_input,
+                chat_log_delta_listener=chat_log_delta_listener,
+            ) as chat_log,
+        ):
+            if intent_response is not None:
+                # Intent already resolved (trigger or local)
+                speech = intent_response.speech.get("plain", {}).get("speech", "")
+                chat_log.async_add_assistant_content_without_tools(
+                    conversation.AssistantContent(
+                        agent_id=agent_id,
+                        content=speech,
+                    )
+                )
+                conversation_result = conversation.ConversationResult(
+                    response=intent_response, conversation_id=session.conversation_id
+                )
+                return conversation_result, speech
+
+            # Otherwise, use the conversation agent to generate a response
+            conversation_result = await conversation.async_converse(
+                hass=self.hass,
+                text=user_input.text,
+                conversation_id=user_input.conversation_id,
+                device_id=user_input.device_id,
+                context=user_input.context,
+                language=user_input.language,
+                agent_id=user_input.agent_id,
+                extra_system_prompt=user_input.extra_system_prompt,
+            )
+            speech = conversation_result.response.speech.get("plain", {}).get(
+                "speech", ""
+            )
+
+            # Terminate streaming if in progress
+            if tts_input_stream and getattr(self, "_streamed_response_text", False):
+                tts_input_stream.put_nowait(None)
+
+            return conversation_result, speech
+
+    def _handle_intent_error(self, src_error: Exception) -> None:
+        """Handle unexpected errors gracefully during intent recognition."""
+        _LOGGER.exception("Unexpected error during intent recognition")
+        raise IntentRecognitionError(
+            code="intent-failed",
+            message="Unexpected error during intent recognition",
+        ) from src_error
+
+    def _finalize_intent(
+        self,
+        conversation_result: conversation.ConversationResult,
+        processed_locally: bool,
+        agent_id: str,
+    ) -> None:
+        """Emit the end-of-intent event and update conversation continuity state."""
         _LOGGER.debug("conversation result %s", conversation_result)
-
         self.process_event(
             PipelineEvent(
                 PipelineEventType.INTENT_END,
@@ -1305,11 +1414,12 @@ class PipelineRun:
                 },
             )
         )
-
-        if conversation_result.continue_conversation:
+        if (
+            conversation_result.continue_conversation
+            and self._conversation_data is not None
+        ):
+            # Keep using the same agent for the next turn
             self._conversation_data.continue_conversation_agent = agent_id
-
-        return speech
 
     async def prepare_text_to_speech(self) -> None:
         """Prepare text-to-speech."""
