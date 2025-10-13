@@ -891,6 +891,7 @@ class BrSensor(SensorEntity):
 
         self._measured = data.get(MEASURED)
         sensor_type = self.entity_description.key
+        # a boolean to check if the value was updated
         is_value_updated = False
 
         # Handle forecast sensors (1d, 2d, 3d, 4d, 5d suffixes)
@@ -916,15 +917,6 @@ class BrSensor(SensorEntity):
                         sensor_type[:-3]
                     )
                     is_value_updated = True
-            except IndexError:
-                _LOGGER.warning(MSG_NO_FORECAST, fcday)
-                is_value_updated = False
-
-            # update all other sensors
-            try:
-                self._attr_native_value = data.get(FORECAST)[fcday].get(
-                    sensor_type[:-3]
-                )
             except IndexError:
                 _LOGGER.warning(MSG_NO_FORECAST, fcday)
                 is_value_updated = False
