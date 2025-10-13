@@ -867,6 +867,12 @@ class BrSensor(SensorEntity):
         self._attr_extra_state_attributes = result
 
     @callback
+    def _get_fcday_from_sensor(self, sensor_type: str) -> int:
+        """Extract the forecast day index (0-4) from the sensor type string."""
+        day_char = sensor_type[-2]
+        return int(day_char) - 1
+
+    @callback
     def _load_data(self, data):
         """Load the sensor with relevant data."""
         # Check if we have a new measurement,
@@ -879,7 +885,7 @@ class BrSensor(SensorEntity):
         is_value_updated = False
 
         if sensor_type.endswith(("_1d", "_2d", "_3d", "_4d", "_5d")):
-            fcday = int(sensor_type[-2]) - 1
+            fcday = self._get_fcday_from_sensor(sensor_type)
 
             try:
                 # update weather symbol & status text
