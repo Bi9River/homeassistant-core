@@ -803,7 +803,11 @@ class BrSensor(SensorEntity):
 
     @callback
     def _process_condition(self, condition: dict | None, sensor_type: str) -> bool:
-        """Process a given condition object and update the entity state."""
+        """Process a condition object and update the entity state if changed.
+
+        This function extracts the appropriate state value and image from the condition data based on the sensor type.
+        It updates the entity only if the new state or image differs from the current one.
+        """
         if not condition:
             return False
 
@@ -841,6 +845,7 @@ class BrSensor(SensorEntity):
 
     @callback
     def _update_precipitation_forecast(self, data: dict, sensor_type: str) -> None:
+        """Update the sensor for precipitation forecast data."""
         if nested := data.get(PRECIPITATION_FORECAST):
             self._timeframe = nested.get(TIMEFRAME)
             self._attr_native_value = nested.get(
@@ -874,7 +879,11 @@ class BrSensor(SensorEntity):
 
     @callback
     def _load_data(self, data):
-        """Load the sensor with relevant data."""
+        """Load the sensor with relevant data.
+
+        This method processes weather data and updates the sensor's state based on the sensor type.
+        It handles both current conditions and forecast data (1-5 days ahead).
+        """
         # Check if we have a new measurement,
         # otherwise we do not have to update the sensor
         if self._measured == data.get(MEASURED):
@@ -884,11 +893,12 @@ class BrSensor(SensorEntity):
         sensor_type = self.entity_description.key
         is_value_updated = False
 
+        # Handle forecast sensors (1d, 2d, 3d, 4d, 5d suffixes)
         if sensor_type.endswith(("_1d", "_2d", "_3d", "_4d", "_5d")):
             fcday = self._get_fcday_from_sensor(sensor_type)
 
             try:
-                # update weather symbol & status text
+                # Update weather symbol & status text for forecast conditions
                 if sensor_type.startswith((SYMBOL, CONDITION)):
                     condition = data.get(FORECAST)[fcday].get(CONDITION)
                     is_value_updated = self._update_forecast_condition(
@@ -896,11 +906,12 @@ class BrSensor(SensorEntity):
                     )
 
                 elif sensor_type.startswith(WINDSPEED):
-                    # hass wants windspeeds in km/h not m/s, so convert:
+                    # Home Assistant expects windspeeds in km/h, not m/s, so convert:
                     raw_value = data.get(FORECAST)[fcday].get(sensor_type[:-3])
                     self._attr_native_value = self._convert_windspeed_kph(raw_value)
                     is_value_updated = True
                 else:
+                    # Update all other forecast sensors with raw data
                     self._attr_native_value = data.get(FORECAST)[fcday].get(
                         sensor_type[:-3]
                     )
@@ -918,28 +929,34 @@ class BrSensor(SensorEntity):
                 _LOGGER.warning(MSG_NO_FORECAST, fcday)
                 is_value_updated = False
 
+        # Handle current condition sensors (no day suffix)
         elif sensor_type == SYMBOL or sensor_type.startswith(CONDITION):
-            # update weather symbol & status text
+            # Update weather symbol & status text for current conditions
             is_value_updated = self._update_current_condition(data, sensor_type)
 
+        # Handle precipitation forecast sensors
         elif sensor_type.startswith(PRECIPITATION_FORECAST):
             self._update_precipitation_forecast(data, sensor_type)
             is_value_updated = True
 
+        # Handle wind speed sensors (convert from m/s to km/h)
         elif sensor_type in [WINDSPEED, WINDGUST]:
             raw_value = data.get(sensor_type)
             self._attr_native_value = self._convert_windspeed_kph(raw_value)
             is_value_updated = True
 
+        # Handle visibility sensor (convert from meters to kilometers)
         elif sensor_type == VISIBILITY:
             raw_value = data.get(sensor_type)
             self._attr_native_value = self._convert_visibility_km(raw_value)
             is_value_updated = True
 
+        # Handle all other sensors with direct data assignment
         else:
             self._attr_native_value = data.get(sensor_type)
             is_value_updated = True
 
+        # Update extra attributes if the sensor value was updated
         if is_value_updated:
             self._update_extra_attributes(data)
 
