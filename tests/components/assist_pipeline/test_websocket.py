@@ -20,6 +20,7 @@ from homeassistant.components.assist_pipeline.pipeline import (
     DeviceAudioQueue,
     Pipeline,
     PipelineData,
+    PipelineUpdate,
     async_get_pipelines,
     async_update_pipeline,
 )
@@ -846,7 +847,10 @@ async def test_tts_provider_missing(
     client = await hass_ws_client(hass)
 
     pipelines = async_get_pipelines(hass)
-    await async_update_pipeline(hass, pipelines[0], tts_engine="unavailable")
+    updates = PipelineUpdate(
+        tts_engine="unavailable",
+    )
+    await async_update_pipeline(hass, pipelines[0], updates)
 
     await client.send_json_auto_id(
         {
