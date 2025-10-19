@@ -3,6 +3,7 @@
 import hmac
 from http import HTTPStatus
 import logging
+from typing import cast
 import uuid
 
 from aiohttp.web_response import StreamResponse
@@ -60,66 +61,67 @@ class AlexaFlashBriefingView(http.HomeAssistantView):
         """Handle Alexa Flash Briefing request."""
         _LOGGER.debug("Received Alexa flash briefing request for: %s", briefing_id)
 
+        if error_response := self._validate_request(request, briefing_id):
+            return error_response
+
+        briefing = self._build_briefing_data(briefing_id)
+
+        return self.json(briefing)
+
+    def _validate_request(
+        self, request: http.HomeAssistantRequest, briefing_id: str
+    ) -> tuple[bytes, HTTPStatus] | None:
+        """Validate the flash briefing request."""
         if request.query.get(API_PASSWORD) is None:
-            err = "No password provided for Alexa flash briefing: %s"
-            _LOGGER.error(err, briefing_id)
+            _LOGGER.error(
+                "No password provided for Alexa flash briefing: %s", briefing_id
+            )
             return b"", HTTPStatus.UNAUTHORIZED
 
         if not hmac.compare_digest(
             request.query[API_PASSWORD].encode("utf-8"),
             self.flash_briefings[CONF_PASSWORD].encode("utf-8"),
         ):
-            err = "Wrong password for Alexa flash briefing: %s"
-            _LOGGER.error(err, briefing_id)
+            _LOGGER.error("Wrong password for Alexa flash briefing: %s", briefing_id)
             return b"", HTTPStatus.UNAUTHORIZED
 
         if not isinstance(self.flash_briefings.get(briefing_id), list):
-            err = "No configured Alexa flash briefing was found for: %s"
-            _LOGGER.error(err, briefing_id)
+            _LOGGER.error(
+                "No configured Alexa flash briefing was found for: %s", briefing_id
+            )
             return b"", HTTPStatus.NOT_FOUND
 
-        briefing = []
+        return None  # All checks passed
 
+    def _render_field(self, value: template.Template | str | None) -> str | None:
+        """Render a template field or return the raw value."""
+        if isinstance(value, template.Template):
+            return cast(str, value.async_render(parse_result=False))
+        return value  # This will be None if value was None, or the raw string
+
+    def _build_briefing_data(self, briefing_id: str) -> list[dict]:
+        """Build the list of briefing items."""
+        briefing = []
         for item in self.flash_briefings.get(briefing_id, []):
             output = {}
-            if item.get(CONF_TITLE) is not None:
-                if isinstance(item.get(CONF_TITLE), template.Template):
-                    output[ATTR_TITLE_TEXT] = item[CONF_TITLE].async_render(
-                        parse_result=False
-                    )
-                else:
-                    output[ATTR_TITLE_TEXT] = item.get(CONF_TITLE)
 
-            if item.get(CONF_TEXT) is not None:
-                if isinstance(item.get(CONF_TEXT), template.Template):
-                    output[ATTR_MAIN_TEXT] = item[CONF_TEXT].async_render(
-                        parse_result=False
-                    )
-                else:
-                    output[ATTR_MAIN_TEXT] = item.get(CONF_TEXT)
+            if (title := self._render_field(item.get(CONF_TITLE))) is not None:
+                output[ATTR_TITLE_TEXT] = title
 
-            if (uid := item.get(CONF_UID)) is None:
-                uid = str(uuid.uuid4())
-            output[ATTR_UID] = uid
+            if (text := self._render_field(item.get(CONF_TEXT))) is not None:
+                output[ATTR_MAIN_TEXT] = text
 
-            if item.get(CONF_AUDIO) is not None:
-                if isinstance(item.get(CONF_AUDIO), template.Template):
-                    output[ATTR_STREAM_URL] = item[CONF_AUDIO].async_render(
-                        parse_result=False
-                    )
-                else:
-                    output[ATTR_STREAM_URL] = item.get(CONF_AUDIO)
+            output[ATTR_UID] = item.get(CONF_UID) or str(uuid.uuid4())
 
-            if item.get(CONF_DISPLAY_URL) is not None:
-                if isinstance(item.get(CONF_DISPLAY_URL), template.Template):
-                    output[ATTR_REDIRECTION_URL] = item[CONF_DISPLAY_URL].async_render(
-                        parse_result=False
-                    )
-                else:
-                    output[ATTR_REDIRECTION_URL] = item.get(CONF_DISPLAY_URL)
+            if (audio := self._render_field(item.get(CONF_AUDIO))) is not None:
+                output[ATTR_STREAM_URL] = audio
+
+            if (
+                display_url := self._render_field(item.get(CONF_DISPLAY_URL))
+            ) is not None:
+                output[ATTR_REDIRECTION_URL] = display_url
 
             output[ATTR_UPDATE_DATE] = dt_util.utcnow().strftime(DATE_FORMAT)
-
             briefing.append(output)
 
-        return self.json(briefing)
+        return briefing
