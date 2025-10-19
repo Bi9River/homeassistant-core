@@ -67,6 +67,29 @@ from .const import (
     API_THERMOSTAT_MODES_CUSTOM,
     API_THERMOSTAT_PRESETS,
     DATE_FORMAT,
+    NMSP_ALEXA,
+    NMSP_AUTHORIZATION,
+    NMSP_BRIGHTNESS_CONTROLLER,
+    NMSP_CAMERA_STREAM_CONTROLLER,
+    NMSP_CHANNEL_CONTROLLER,
+    NMSP_COLOR_CONTROLLER,
+    NMSP_COLOR_TEMPERATURE_CONTROLLER,
+    NMSP_DISCOVERY,
+    NMSP_EQUALIZER_CONTROLLER,
+    NMSP_INPUT_CONTROLLER,
+    NMSP_LOCK_CONTROLLER,
+    NMSP_MODE_CONTROLLER,
+    NMSP_PLAYBACK_CONTROLLER,
+    NMSP_POWER_CONTROLLER,
+    NMSP_RANGE_CONTROLLER,
+    NMSP_SCENE_CONTROLLER,
+    NMSP_SECURITY_PANEL_CONTROLLER,
+    NMSP_SEEK_CONTROLLER,
+    NMSP_SPEAKER,
+    NMSP_STEP_SPEAKER,
+    NMSP_THERMOSTAT_CONTROLLER,
+    NMSP_TIME_HOLD_CONTROLLER,
+    NMSP_TOGGLE_CONTROLLER,
     PRESET_MODE_NA,
     Cause,
     Inputs,
@@ -111,7 +134,7 @@ HANDLERS: Registry[
 ] = Registry()
 
 
-@HANDLERS.register(("Alexa.Discovery", "Discover"))
+@HANDLERS.register((NMSP_DISCOVERY, "Discover"))
 async def async_api_discovery(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -137,12 +160,12 @@ async def async_api_discovery(
 
     return directive.response(
         name="Discover.Response",
-        namespace="Alexa.Discovery",
+        namespace=NMSP_DISCOVERY,
         payload={"endpoints": discovery_endpoints},
     )
 
 
-@HANDLERS.register(("Alexa.Authorization", "AcceptGrant"))
+@HANDLERS.register((NMSP_AUTHORIZATION, "AcceptGrant"))
 async def async_api_accept_grant(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -162,11 +185,11 @@ async def async_api_accept_grant(
             await async_enable_proactive_mode(hass, config)
 
     return directive.response(
-        name="AcceptGrant.Response", namespace="Alexa.Authorization", payload={}
+        name="AcceptGrant.Response", namespace=NMSP_AUTHORIZATION, payload={}
     )
 
 
-@HANDLERS.register(("Alexa.PowerController", "TurnOn"))
+@HANDLERS.register((NMSP_POWER_CONTROLLER, "TurnOn"))
 async def async_api_turn_on(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -218,7 +241,7 @@ async def async_api_turn_on(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.PowerController", "TurnOff"))
+@HANDLERS.register((NMSP_POWER_CONTROLLER, "TurnOff"))
 async def async_api_turn_off(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -271,7 +294,7 @@ async def async_api_turn_off(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.BrightnessController", "SetBrightness"))
+@HANDLERS.register((NMSP_BRIGHTNESS_CONTROLLER, "SetBrightness"))
 async def async_api_set_brightness(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -293,7 +316,7 @@ async def async_api_set_brightness(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.BrightnessController", "AdjustBrightness"))
+@HANDLERS.register((NMSP_BRIGHTNESS_CONTROLLER, "AdjustBrightness"))
 async def async_api_adjust_brightness(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -319,7 +342,7 @@ async def async_api_adjust_brightness(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.ColorController", "SetColor"))
+@HANDLERS.register((NMSP_COLOR_CONTROLLER, "SetColor"))
 async def async_api_set_color(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -345,7 +368,7 @@ async def async_api_set_color(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.ColorTemperatureController", "SetColorTemperature"))
+@HANDLERS.register((NMSP_COLOR_TEMPERATURE_CONTROLLER, "SetColorTemperature"))
 async def async_api_set_color_temperature(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -367,7 +390,7 @@ async def async_api_set_color_temperature(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.ColorTemperatureController", "DecreaseColorTemperature"))
+@HANDLERS.register((NMSP_COLOR_TEMPERATURE_CONTROLLER, "DecreaseColorTemperature"))
 async def async_api_decrease_color_temp(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -391,7 +414,7 @@ async def async_api_decrease_color_temp(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.ColorTemperatureController", "IncreaseColorTemperature"))
+@HANDLERS.register((NMSP_COLOR_TEMPERATURE_CONTROLLER, "IncreaseColorTemperature"))
 async def async_api_increase_color_temp(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -415,7 +438,7 @@ async def async_api_increase_color_temp(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.SceneController", "Activate"))
+@HANDLERS.register((NMSP_SCENE_CONTROLLER, "Activate"))
 async def async_api_activate(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -446,11 +469,11 @@ async def async_api_activate(
     }
 
     return directive.response(
-        name="ActivationStarted", namespace="Alexa.SceneController", payload=payload
+        name="ActivationStarted", namespace=NMSP_SCENE_CONTROLLER, payload=payload
     )
 
 
-@HANDLERS.register(("Alexa.SceneController", "Deactivate"))
+@HANDLERS.register((NMSP_SCENE_CONTROLLER, "Deactivate"))
 async def async_api_deactivate(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -475,11 +498,11 @@ async def async_api_deactivate(
     }
 
     return directive.response(
-        name="DeactivationStarted", namespace="Alexa.SceneController", payload=payload
+        name="DeactivationStarted", namespace=NMSP_SCENE_CONTROLLER, payload=payload
     )
 
 
-@HANDLERS.register(("Alexa.LockController", "Lock"))
+@HANDLERS.register((NMSP_LOCK_CONTROLLER, "Lock"))
 async def async_api_lock(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -498,12 +521,12 @@ async def async_api_lock(
 
     response = directive.response()
     response.add_context_property(
-        {"name": "lockState", "namespace": "Alexa.LockController", "value": "LOCKED"}
+        {"name": "lockState", "namespace": NMSP_LOCK_CONTROLLER, "value": "LOCKED"}
     )
     return response
 
 
-@HANDLERS.register(("Alexa.LockController", "Unlock"))
+@HANDLERS.register((NMSP_LOCK_CONTROLLER, "Unlock"))
 async def async_api_unlock(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -547,13 +570,13 @@ async def async_api_unlock(
 
     response = directive.response()
     response.add_context_property(
-        {"namespace": "Alexa.LockController", "name": "lockState", "value": "UNLOCKED"}
+        {"namespace": NMSP_LOCK_CONTROLLER, "name": "lockState", "value": "UNLOCKED"}
     )
 
     return response
 
 
-@HANDLERS.register(("Alexa.Speaker", "SetVolume"))
+@HANDLERS.register((NMSP_SPEAKER, "SetVolume"))
 async def async_api_set_volume(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -576,7 +599,7 @@ async def async_api_set_volume(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.InputController", "SelectInput"))
+@HANDLERS.register((NMSP_INPUT_CONTROLLER, "SelectInput"))
 async def async_api_select_input(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -625,7 +648,7 @@ async def async_api_select_input(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.Speaker", "AdjustVolume"))
+@HANDLERS.register((NMSP_SPEAKER, "AdjustVolume"))
 async def async_api_adjust_volume(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -658,7 +681,7 @@ async def async_api_adjust_volume(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.StepSpeaker", "AdjustVolume"))
+@HANDLERS.register((NMSP_STEP_SPEAKER, "AdjustVolume"))
 async def async_api_adjust_volume_step(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -696,8 +719,8 @@ async def async_api_adjust_volume_step(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.StepSpeaker", "SetMute"))
-@HANDLERS.register(("Alexa.Speaker", "SetMute"))
+@HANDLERS.register((NMSP_STEP_SPEAKER, "SetMute"))
+@HANDLERS.register((NMSP_SPEAKER, "SetMute"))
 async def async_api_set_mute(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -719,7 +742,7 @@ async def async_api_set_mute(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.PlaybackController", "Play"))
+@HANDLERS.register((NMSP_PLAYBACK_CONTROLLER, "Play"))
 async def async_api_play(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -737,7 +760,7 @@ async def async_api_play(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.PlaybackController", "Pause"))
+@HANDLERS.register((NMSP_PLAYBACK_CONTROLLER, "Pause"))
 async def async_api_pause(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -755,7 +778,7 @@ async def async_api_pause(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.PlaybackController", "Stop"))
+@HANDLERS.register((NMSP_PLAYBACK_CONTROLLER, "Stop"))
 async def async_api_stop(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -789,7 +812,7 @@ async def async_api_stop(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.PlaybackController", "Next"))
+@HANDLERS.register((NMSP_PLAYBACK_CONTROLLER, "Next"))
 async def async_api_next(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -807,7 +830,7 @@ async def async_api_next(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.PlaybackController", "Previous"))
+@HANDLERS.register((NMSP_PLAYBACK_CONTROLLER, "Previous"))
 async def async_api_previous(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -848,7 +871,7 @@ def temperature_from_object(
     return TemperatureConverter.convert(temp, from_unit, to_unit)
 
 
-@HANDLERS.register(("Alexa.ThermostatController", "SetTargetTemperature"))
+@HANDLERS.register((NMSP_THERMOSTAT_CONTROLLER, "SetTargetTemperature"))
 async def async_api_set_target_temp(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -875,7 +898,7 @@ async def async_api_set_target_temp(
         response.add_context_property(
             {
                 "name": "targetSetpoint",
-                "namespace": "Alexa.ThermostatController",
+                "namespace": NMSP_THERMOSTAT_CONTROLLER,
                 "value": {"value": temp, "scale": API_TEMP_UNITS[unit]},
             }
         )
@@ -887,7 +910,7 @@ async def async_api_set_target_temp(
         response.add_context_property(
             {
                 "name": "lowerSetpoint",
-                "namespace": "Alexa.ThermostatController",
+                "namespace": NMSP_THERMOSTAT_CONTROLLER,
                 "value": {"value": temp_low, "scale": API_TEMP_UNITS[unit]},
             }
         )
@@ -899,7 +922,7 @@ async def async_api_set_target_temp(
         response.add_context_property(
             {
                 "name": "upperSetpoint",
-                "namespace": "Alexa.ThermostatController",
+                "namespace": NMSP_THERMOSTAT_CONTROLLER,
                 "value": {"value": temp_high, "scale": API_TEMP_UNITS[unit]},
             }
         )
@@ -917,7 +940,7 @@ async def async_api_set_target_temp(
     return response
 
 
-@HANDLERS.register(("Alexa.ThermostatController", "AdjustTargetTemperature"))
+@HANDLERS.register((NMSP_THERMOSTAT_CONTROLLER, "AdjustTargetTemperature"))
 async def async_api_adjust_target_temp(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -958,14 +981,14 @@ async def async_api_adjust_target_temp(
         response.add_context_property(
             {
                 "name": "upperSetpoint",
-                "namespace": "Alexa.ThermostatController",
+                "namespace": NMSP_THERMOSTAT_CONTROLLER,
                 "value": {"value": target_temp_high, "scale": API_TEMP_UNITS[unit]},
             }
         )
         response.add_context_property(
             {
                 "name": "lowerSetpoint",
-                "namespace": "Alexa.ThermostatController",
+                "namespace": NMSP_THERMOSTAT_CONTROLLER,
                 "value": {"value": target_temp_low, "scale": API_TEMP_UNITS[unit]},
             }
         )
@@ -985,7 +1008,7 @@ async def async_api_adjust_target_temp(
         response.add_context_property(
             {
                 "name": "targetSetpoint",
-                "namespace": "Alexa.ThermostatController",
+                "namespace": NMSP_THERMOSTAT_CONTROLLER,
                 "value": {"value": target_temp, "scale": API_TEMP_UNITS[unit]},
             }
         )
@@ -1003,7 +1026,7 @@ async def async_api_adjust_target_temp(
     return response
 
 
-@HANDLERS.register(("Alexa.ThermostatController", "SetThermostatMode"))
+@HANDLERS.register((NMSP_THERMOSTAT_CONTROLLER, "SetThermostatMode"))
 async def async_api_set_thermostat_mode(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1069,7 +1092,7 @@ async def async_api_set_thermostat_mode(
     response.add_context_property(
         {
             "name": "thermostatMode",
-            "namespace": "Alexa.ThermostatController",
+            "namespace": NMSP_THERMOSTAT_CONTROLLER,
             "value": mode,
         }
     )
@@ -1077,7 +1100,7 @@ async def async_api_set_thermostat_mode(
     return response
 
 
-@HANDLERS.register(("Alexa", "ReportState"))
+@HANDLERS.register((NMSP_ALEXA, "ReportState"))
 async def async_api_reportstate(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1088,7 +1111,7 @@ async def async_api_reportstate(
     return directive.response(name="StateReport")
 
 
-@HANDLERS.register(("Alexa.SecurityPanelController", "Arm"))
+@HANDLERS.register((NMSP_SECURITY_PANEL_CONTROLLER, "Arm"))
 async def async_api_arm(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1128,13 +1151,13 @@ async def async_api_arm(
     payload: dict[str, Any] = {"exitDelayInSeconds": 0}
 
     response = directive.response(
-        name="Arm.Response", namespace="Alexa.SecurityPanelController", payload=payload
+        name="Arm.Response", namespace=NMSP_SECURITY_PANEL_CONTROLLER, payload=payload
     )
 
     response.add_context_property(
         {
             "name": "armState",
-            "namespace": "Alexa.SecurityPanelController",
+            "namespace": NMSP_SECURITY_PANEL_CONTROLLER,
             "value": arm_state,
         }
     )
@@ -1142,7 +1165,7 @@ async def async_api_arm(
     return response
 
 
-@HANDLERS.register(("Alexa.SecurityPanelController", "Disarm"))
+@HANDLERS.register((NMSP_SECURITY_PANEL_CONTROLLER, "Disarm"))
 async def async_api_disarm(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1173,7 +1196,7 @@ async def async_api_disarm(
     response.add_context_property(
         {
             "name": "armState",
-            "namespace": "Alexa.SecurityPanelController",
+            "namespace": NMSP_SECURITY_PANEL_CONTROLLER,
             "value": "DISARMED",
         }
     )
@@ -1181,7 +1204,7 @@ async def async_api_disarm(
     return response
 
 
-@HANDLERS.register(("Alexa.ModeController", "SetMode"))
+@HANDLERS.register((NMSP_MODE_CONTROLLER, "SetMode"))
 async def async_api_set_mode(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1287,7 +1310,7 @@ async def async_api_set_mode(
     response = directive.response()
     response.add_context_property(
         {
-            "namespace": "Alexa.ModeController",
+            "namespace": NMSP_MODE_CONTROLLER,
             "instance": instance,
             "name": "mode",
             "value": mode,
@@ -1297,7 +1320,7 @@ async def async_api_set_mode(
     return response
 
 
-@HANDLERS.register(("Alexa.ModeController", "AdjustMode"))
+@HANDLERS.register((NMSP_MODE_CONTROLLER, "AdjustMode"))
 async def async_api_adjust_mode(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1315,7 +1338,7 @@ async def async_api_adjust_mode(
     raise AlexaInvalidDirectiveError(DIRECTIVE_NOT_SUPPORTED)
 
 
-@HANDLERS.register(("Alexa.ToggleController", "TurnOn"))
+@HANDLERS.register((NMSP_TOGGLE_CONTROLLER, "TurnOn"))
 async def async_api_toggle_on(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1351,7 +1374,7 @@ async def async_api_toggle_on(
     response = directive.response()
     response.add_context_property(
         {
-            "namespace": "Alexa.ToggleController",
+            "namespace": NMSP_TOGGLE_CONTROLLER,
             "instance": instance,
             "name": "toggleState",
             "value": "ON",
@@ -1361,7 +1384,7 @@ async def async_api_toggle_on(
     return response
 
 
-@HANDLERS.register(("Alexa.ToggleController", "TurnOff"))
+@HANDLERS.register((NMSP_TOGGLE_CONTROLLER, "TurnOff"))
 async def async_api_toggle_off(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1390,7 +1413,7 @@ async def async_api_toggle_off(
     response = directive.response()
     response.add_context_property(
         {
-            "namespace": "Alexa.ToggleController",
+            "namespace": NMSP_TOGGLE_CONTROLLER,
             "instance": instance,
             "name": "toggleState",
             "value": "OFF",
@@ -1400,7 +1423,7 @@ async def async_api_toggle_off(
     return response
 
 
-@HANDLERS.register(("Alexa.RangeController", "SetRangeValue"))
+@HANDLERS.register((NMSP_RANGE_CONTROLLER, "SetRangeValue"))
 async def async_api_set_range(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1506,7 +1529,7 @@ async def async_api_set_range(
     response = directive.response()
     response.add_context_property(
         {
-            "namespace": "Alexa.RangeController",
+            "namespace": NMSP_RANGE_CONTROLLER,
             "instance": instance,
             "name": "rangeValue",
             "value": range_value,
@@ -1516,7 +1539,7 @@ async def async_api_set_range(
     return response
 
 
-@HANDLERS.register(("Alexa.RangeController", "AdjustRangeValue"))
+@HANDLERS.register((NMSP_RANGE_CONTROLLER, "AdjustRangeValue"))
 async def async_api_adjust_range(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1666,7 +1689,7 @@ async def async_api_adjust_range(
     response = directive.response()
     response.add_context_property(
         {
-            "namespace": "Alexa.RangeController",
+            "namespace": NMSP_RANGE_CONTROLLER,
             "instance": instance,
             "name": "rangeValue",
             "value": response_value,
@@ -1676,7 +1699,7 @@ async def async_api_adjust_range(
     return response
 
 
-@HANDLERS.register(("Alexa.ChannelController", "ChangeChannel"))
+@HANDLERS.register((NMSP_CHANNEL_CONTROLLER, "ChangeChannel"))
 async def async_api_changechannel(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1724,7 +1747,7 @@ async def async_api_changechannel(
 
     response.add_context_property(
         {
-            "namespace": "Alexa.ChannelController",
+            "namespace": NMSP_CHANNEL_CONTROLLER,
             "name": "channel",
             "value": {payload_name: channel},
         }
@@ -1733,7 +1756,7 @@ async def async_api_changechannel(
     return response
 
 
-@HANDLERS.register(("Alexa.ChannelController", "SkipChannels"))
+@HANDLERS.register((NMSP_CHANNEL_CONTROLLER, "SkipChannels"))
 async def async_api_skipchannel(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1760,7 +1783,7 @@ async def async_api_skipchannel(
 
     response.add_context_property(
         {
-            "namespace": "Alexa.ChannelController",
+            "namespace": NMSP_CHANNEL_CONTROLLER,
             "name": "channel",
             "value": {"number": ""},
         }
@@ -1769,7 +1792,7 @@ async def async_api_skipchannel(
     return response
 
 
-@HANDLERS.register(("Alexa.SeekController", "AdjustSeekPosition"))
+@HANDLERS.register((NMSP_SEEK_CONTROLLER, "AdjustSeekPosition"))
 async def async_api_seek(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1811,11 +1834,11 @@ async def async_api_seek(
         "properties": [{"name": "positionMilliseconds", "value": seek_position}]
     }
     return directive.response(
-        name="StateReport", namespace="Alexa.SeekController", payload=payload
+        name="StateReport", namespace=NMSP_SEEK_CONTROLLER, payload=payload
     )
 
 
-@HANDLERS.register(("Alexa.EqualizerController", "SetMode"))
+@HANDLERS.register((NMSP_EQUALIZER_CONTROLLER, "SetMode"))
 async def async_api_set_eq_mode(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1845,9 +1868,9 @@ async def async_api_set_eq_mode(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.EqualizerController", "AdjustBands"))
-@HANDLERS.register(("Alexa.EqualizerController", "ResetBands"))
-@HANDLERS.register(("Alexa.EqualizerController", "SetBands"))
+@HANDLERS.register((NMSP_EQUALIZER_CONTROLLER, "AdjustBands"))
+@HANDLERS.register((NMSP_EQUALIZER_CONTROLLER, "ResetBands"))
+@HANDLERS.register((NMSP_EQUALIZER_CONTROLLER, "SetBands"))
 async def async_api_bands_directive(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1862,7 +1885,7 @@ async def async_api_bands_directive(
     raise AlexaInvalidDirectiveError(DIRECTIVE_NOT_SUPPORTED)
 
 
-@HANDLERS.register(("Alexa.TimeHoldController", "Hold"))
+@HANDLERS.register((NMSP_TIME_HOLD_CONTROLLER, "Hold"))
 async def async_api_hold(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1889,7 +1912,7 @@ async def async_api_hold(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.TimeHoldController", "Resume"))
+@HANDLERS.register((NMSP_TIME_HOLD_CONTROLLER, "Resume"))
 async def async_api_resume(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1916,7 +1939,7 @@ async def async_api_resume(
     return directive.response()
 
 
-@HANDLERS.register(("Alexa.CameraStreamController", "InitializeCameraStreams"))
+@HANDLERS.register((NMSP_CAMERA_STREAM_CONTROLLER, "InitializeCameraStreams"))
 async def async_api_initialize_camera_stream(
     hass: ha.HomeAssistant,
     config: AbstractConfig,
@@ -1957,5 +1980,5 @@ async def async_api_initialize_camera_stream(
         "imageUri": f"{external_url}{camera_image}",
     }
     return directive.response(
-        name="Response", namespace="Alexa.CameraStreamController", payload=payload
+        name="Response", namespace=NMSP_CAMERA_STREAM_CONTROLLER, payload=payload
     )
