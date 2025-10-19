@@ -20,6 +20,8 @@ CONF_ENTITY_CONFIG = "entity_config"
 CONF_ENDPOINT = "endpoint"
 CONF_LOCALE = "locale"
 
+LABEL_TYPE = "@type"
+
 ATTR_UID = "uid"
 ATTR_UPDATE_DATE = "updateDate"
 ATTR_TITLE_TEXT = "titleText"
