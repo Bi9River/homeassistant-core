@@ -246,6 +246,20 @@ class AlexaResponse:
         return self._response
 
 
+@callback
+def extra_significant_check(
+    hass: HomeAssistant,
+    old_state: str,
+    old_attrs: Mapping[Any, Any],
+    old_extra_arg: Any,
+    new_state: str,
+    new_attrs: Mapping[Any, Any],
+    new_extra_arg: Any,
+) -> bool:
+    """Check if the serialized data has changed."""
+    return old_extra_arg is not None and old_extra_arg != new_extra_arg
+
+
 async def async_enable_proactive_mode(
     hass: HomeAssistant, smart_home_config: AbstractConfig
 ) -> CALLBACK_TYPE | None:
@@ -255,19 +269,6 @@ async def async_enable_proactive_mode(
     """
     # Validate we can get access token.
     await smart_home_config.async_get_access_token()
-
-    @callback
-    def extra_significant_check(
-        hass: HomeAssistant,
-        old_state: str,
-        old_attrs: Mapping[Any, Any],
-        old_extra_arg: Any,
-        new_state: str,
-        new_attrs: Mapping[Any, Any],
-        new_extra_arg: Any,
-    ) -> bool:
-        """Check if the serialized data has changed."""
-        return old_extra_arg is not None and old_extra_arg != new_extra_arg
 
     checker = await create_checker(hass, DOMAIN, extra_significant_check)
 
@@ -304,23 +305,18 @@ async def async_enable_proactive_mode(
         should_report = False
         should_doorbell = False
 
-        for interface in alexa_changed_entity.interfaces():
-            if not should_report and interface.properties_proactively_reported():
-                should_report = True
+        interfaces = list(alexa_changed_entity.interfaces())
+        should_report = any(i.properties_proactively_reported() for i in interfaces)
+        should_doorbell = any(
+            i.name() == "Alexa.DoorbellEventSource" for i in interfaces
+        )
 
-            if interface.name() == "Alexa.DoorbellEventSource":
-                should_doorbell = True
-                break
-
-        if not should_report and not should_doorbell:
+        if not (should_report or should_doorbell):
             return
 
         if should_doorbell:
             old_state = data["old_state"]
-            if new_state.domain == event.DOMAIN or (
-                new_state.state == STATE_ON
-                and (old_state is None or old_state.state != STATE_ON)
-            ):
+            if _is_doorbell_rising_edge(new_state, old_state):
                 await async_send_doorbell_event_message(
                     hass, smart_home_config, alexa_changed_entity
                 )
@@ -342,6 +338,14 @@ async def async_enable_proactive_mode(
         _async_entity_state_listener,
         event_filter=_async_entity_state_filter,
     )
+
+
+def _is_doorbell_rising_edge(new_state: State, old_state: State | None) -> bool:
+    if new_state.domain == event.DOMAIN:
+        return True
+    if new_state.state != STATE_ON:
+        return False
+    return old_state is None or old_state.state != STATE_ON
 
 
 async def async_send_changereport_message(
