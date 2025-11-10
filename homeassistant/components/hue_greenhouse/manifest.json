@@ -1,0 +1,17 @@
+{
+  "domain": "hue_greenhouse",
+  "name": "Hue Greenhouse",
+  "codeowners": [
+    "@Bi9River",
+    "@ZihanKuang",
+    "@Ewigkeit-0919",
+    "@Longshou",
+    "@sososo08"
+  ],
+  "dependencies": ["hue"],
+  "documentation": "https://www.home-assistant.io/integrations/hue_greenhouse",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "quality_scale": "bronze",
+  "requirements": []
+}
