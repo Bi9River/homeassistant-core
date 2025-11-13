@@ -1,5 +1,9 @@
-/config
+/config/*
 config2/*
+
+!/config/www
+!/config/www/*
+!/config/configuration.yaml
 
 tests/testing_config/deps
 tests/testing_config/home-assistant.log*
