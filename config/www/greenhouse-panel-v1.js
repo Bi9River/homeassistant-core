@@ -3,6 +3,7 @@ import {
   html,
   css,
 } from "https://unpkg.com/lit@3.0.0/index.js?module";
+import { analyzeGreenhouseConditions, AIAssistant } from "./ai-assistant.js";
 
 class GreenhousePanel extends LitElement {
   static get properties() {
@@ -14,6 +15,11 @@ class GreenhousePanel extends LitElement {
       _lightOn: { type: Boolean, state: true },
       _greenhouseActive: { type: Boolean, state: true },
       _greenhouseMode: { type: String, state: true },
+      _simTemp: { type: Number }, // Used in Sensor Panel
+      _simHumidity: { type: Number }, // Used in Sensor Panel
+      _aiAnalysis: { type: String }, // AI analysis result
+      _aiLoading: { type: Boolean }, // AI loading state
+      _showPresetQuestions: { type: Boolean }, // Show preset questions panel
     };
   }
 
@@ -34,6 +40,12 @@ class GreenhousePanel extends LitElement {
     this._pendingAutoToggle = false;
     this._pendingSceneChange = false;
     this._pendingWaterActivate = false;
+
+    this._simTemp = 24.5;
+    this._simHumidity = 65;
+    this._aiAnalysis = "";
+    this._aiLoading = false;
+    this._showPresetQuestions = false;
   }
 
   willUpdate(changedProperties) {
@@ -80,15 +92,21 @@ class GreenhousePanel extends LitElement {
 
         <div class="dashboard-grid">
           ${this._renderWateringCard()} ${this._renderLightingCard()}
-          ${this._renderDevicesCard()} ${this._renderWateringSchedule()}
-          ${this._renderLightingSchedule()}
+          ${this._renderAIAnalysisCard()} ${this._renderSensorControlCard()}
+        </div>
+
+        <!-- Second Row: Half-width layout -->
+        <div class="dashboard-grid-half">
+          ${this._renderDevicesCard()}
+          <div class="schedule-row">
+            ${this._renderWateringSchedule()} ${this._renderLightingSchedule()}
+          </div>
         </div>
       </div>
     `;
   }
 
-  // ==================== UI RENDERERS ====================
-
+  // Header & Status Bar
   _renderHeader() {
     return html`
       <div class="header">
@@ -136,7 +154,7 @@ class GreenhousePanel extends LitElement {
         <div class="card-header">
           <div class="card-title">
             <span class="icon">💧</span>
-            <span>Smart Watering System</span>
+            <span>Smart Watering Control</span>
           </div>
         </div>
 
@@ -183,7 +201,7 @@ class GreenhousePanel extends LitElement {
         </div>
 
         <div class="control-group">
-          <!-- Auto Toggle -->
+          <!-- Auto Light Control Toggle -->
           <div class="control-item">
             <div style="display: flex; flex-direction: column; gap: 4px;">
               <span>Auto Light Control</span>
@@ -256,14 +274,295 @@ class GreenhousePanel extends LitElement {
     `;
   }
 
-  _renderDevicesCard() {
-    // Use our local reactive properties for immediate feedback
+  // NEW: AI Analysis System Card
+  _renderAIAnalysisCard() {
+    // Preset questions for quick AI consultation
+    const presetQuestions = [
+      {
+        icon: "🌱",
+        question: "How can I optimize plant growth?",
+        category: "Growth",
+      },
+      {
+        icon: "💧",
+        question: "Is my humidity level appropriate?",
+        category: "Environment",
+      },
+      {
+        icon: "🌡️",
+        question: "Should I adjust the temperature?",
+        category: "Environment",
+      },
+      {
+        icon: "💡",
+        question: "Is my lighting setup optimal?",
+        category: "Lighting",
+      },
+      {
+        icon: "🐛",
+        question: "How to prevent common plant diseases?",
+        category: "Health",
+      },
+      {
+        icon: "⏰",
+        question: "What's the best watering schedule?",
+        category: "Care",
+      },
+    ];
+
     return html`
-      <div class="card wide-card">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon">🤖</span>
+            <span>AI Analysis System</span>
+          </div>
+          <button
+            class="preset-toggle-btn"
+            @click=${this._togglePresetQuestions}
+            title="Quick Questions"
+          >
+            <span class="btn-icon"
+              >${this._showPresetQuestions ? "✕" : "💬"}</span
+            >
+            <span class="btn-text"
+              >${this._showPresetQuestions ? "Close" : "Quick Questions"}</span
+            >
+          </button>
+        </div>
+
+        <div style="margin: 16px 0;">
+          <div
+            style="font-size: 13px; color: var(--secondary-text-color); margin-bottom: 12px; font-weight: 500;"
+          >
+            Current Environment:
+          </div>
+          <div
+            style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: var(--primary-text-color);"
+          >
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span>🌡️</span>
+              <span style="color: var(--secondary-text-color);"
+                >Temperature:</span
+              >
+              <strong>${this._simTemp}°C</strong>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span>💧</span>
+              <span style="color: var(--secondary-text-color);">Humidity:</span>
+              <strong>${this._simHumidity}%</strong>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span>💡</span>
+              <span style="color: var(--secondary-text-color);">Light:</span>
+              <strong
+                >${this._greenhouseMode === "growth"
+                  ? "Cool Daylight (6500K)"
+                  : "Warm White (2700K)"}</strong
+              >
+            </div>
+          </div>
+        </div>
+
+        <!-- Preset Questions Panel -->
+        ${this._showPresetQuestions
+          ? html`
+              <div class="preset-questions-panel">
+                <div class="preset-questions-header">
+                  <span>💬</span>
+                  <span>Quick Questions</span>
+                </div>
+                <div class="preset-questions-grid">
+                  ${presetQuestions.map(
+                    (q) => html`
+                      <button
+                        class="preset-question-btn"
+                        @click=${() => this._askPresetQuestion(q.question)}
+                        ?disabled=${this._aiLoading}
+                      >
+                        <span class="question-icon">${q.icon}</span>
+                        <span class="question-text">${q.question}</span>
+                      </button>
+                    `,
+                  )}
+                </div>
+              </div>
+            `
+          : ""}
+        ${this._aiAnalysis
+          ? html`
+              <div class="ai-recommendation-box">
+                <div class="ai-recommendation-header">
+                  <span>🤖</span>
+                  <span>AI Recommendation:</span>
+                </div>
+                <div class="ai-recommendation-content">
+                  ${this._formatAIResponse(this._aiAnalysis)}
+                </div>
+              </div>
+            `
+          : ""}
+
+        <button
+          class="button"
+          @click=${this._analyzeWithAI}
+          ?disabled=${this._aiLoading}
+          style="margin-top: 12px;"
+        >
+          ${this._aiLoading
+            ? "⏳ Analyzing..."
+            : "🤖 Analyze Current Conditions"}
+        </button>
+
+        ${this._aiAnalysis
+          ? html`
+              <button
+                class="button secondary"
+                @click=${this._clearAIAnalysis}
+                style="margin-top: 8px;"
+              >
+                🗑️ Clear Result
+              </button>
+            `
+          : ""}
+      </div>
+    `;
+  }
+
+  // Format AI response into readable HTML with markdown support
+  _formatAIResponse(text) {
+    if (!text) return "";
+
+    // First, handle markdown bold (**text** or __text__)
+    let processedText = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    processedText = processedText.replace(
+      /__([^_]+)__/g,
+      "<strong>$1</strong>",
+    );
+
+    // Handle markdown italic (*text* or _text_)
+    processedText = processedText.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+    processedText = processedText.replace(/_([^_]+)_/g, "<em>$1</em>");
+
+    // Split by numbered points (1., 2., 3., etc.)
+    const parts = processedText.split(/(\d+\.\s)/);
+    const formattedParts = [];
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i].trim();
+      if (!part) continue;
+
+      // Check if it's a number marker
+      if (/^\d+\.\s*$/.test(part)) {
+        // Get the next part (the content)
+        if (i + 1 < parts.length) {
+          const content = parts[i + 1].trim();
+          formattedParts.push(html`
+            <div class="ai-point">
+              <span class="ai-point-number">${part}</span>
+              <span class="ai-point-text" .innerHTML=${content}></span>
+            </div>
+          `);
+          i++; // Skip the next part as we've already processed it
+        }
+      } else if (i === 0 || !parts[i - 1] || !/^\d+\.\s*$/.test(parts[i - 1])) {
+        // It's a non-numbered text (like an introduction)
+        formattedParts.push(html`
+          <div class="ai-intro-text" .innerHTML=${part}></div>
+        `);
+      }
+    }
+
+    return formattedParts.length > 0
+      ? formattedParts
+      : html`<div .innerHTML=${processedText}></div>`;
+  }
+
+  // NEW: Simplified Sensor Mock System Card (Temperature and Humidity only)
+  _renderSensorControlCard() {
+    return html`
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon">🎛️</span>
+            <span>Sensor Mock System</span>
+          </div>
+        </div>
+
+        <!-- Temperature Slider -->
+        <div class="slider-container">
+          <div class="slider-header">
+            <span class="slider-label">🌡️ Simulated Temperature</span>
+            <span class="slider-value">${this._simTemp.toFixed(1)}°C</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="40"
+            step="0.5"
+            .value=${this._simTemp}
+            @input=${(e) => this._updateSimValue("temp", e.target.value)}
+          />
+          <div class="slider-marks">
+            <span>0°C</span>
+            <span>20°C</span>
+            <span>40°C</span>
+          </div>
+        </div>
+
+        <!-- Humidity Slider -->
+        <div class="slider-container">
+          <div class="slider-header">
+            <span class="slider-label">💧 Simulated Humidity</span>
+            <span class="slider-value">${this._simHumidity}%</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            .value=${this._simHumidity}
+            @input=${(e) => this._updateSimValue("humidity", e.target.value)}
+          />
+          <div class="slider-marks">
+            <span>0%</span>
+            <span>50%</span>
+            <span>100%</span>
+          </div>
+        </div>
+
+        <!-- Progress Bar for Humidity -->
+        <div style="margin-top: 16px;">
+          <div
+            style="display: flex; justify-content: space-between; font-size: 12px; color: var(--secondary-text-color); margin-bottom: 4px;"
+          >
+            <span>Moisture Level</span>
+            <span>${this._simHumidity}%</span>
+          </div>
+          <div class="progress-bar">
+            <div
+              class="progress-fill"
+              style="width: ${this._simHumidity}%; background: ${this
+                ._simHumidity < 40
+                ? "var(--warning-color)"
+                : "var(--success-color)"};"
+            ></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Greenhouse Devices Overview - HALF WIDTH
+  _renderDevicesCard() {
+    const isLightOn = this._simLightState === "on";
+
+    return html`
+      <div class="card">
         <div class="card-header">
           <div class="card-title">
             <span class="icon">🏡</span>
-            <span>Device Overview</span>
+            <span>Greenhouse Devices Overview</span>
           </div>
         </div>
 
@@ -286,6 +585,7 @@ class GreenhousePanel extends LitElement {
     `;
   }
 
+  // Watering Schedule - HALF WIDTH
   _renderWateringSchedule() {
     return html`
       <div class="card">
@@ -302,6 +602,7 @@ class GreenhousePanel extends LitElement {
     `;
   }
 
+  // Lighting Schedule - HALF WIDTH
   _renderLightingSchedule() {
     return html`
       <div class="card">
@@ -426,6 +727,207 @@ class GreenhousePanel extends LitElement {
       entity_id: this.lightEntityId,
       mode: mode,
     });
+  }
+
+  // ==================== EVENT HANDLERS ====================
+
+  // Update simulation values
+  _updateSimValue(type, value) {
+    switch (type) {
+      case "temp":
+        this._simTemp = parseFloat(value);
+        this._updateSensor("input_number.sim_temperature", this._simTemp);
+        break;
+      case "humidity":
+        this._simHumidity = parseInt(value);
+        this._updateSensor("input_number.sim_humidity", this._simHumidity);
+        break;
+    }
+    this.requestUpdate();
+  }
+
+  // Update sensor value
+  _updateSensor(entityId, value) {
+    if (this.hass.states[entityId]) {
+      this.hass.callService("input_number", "set_value", {
+        entity_id: entityId,
+        value: value,
+      });
+    }
+  }
+
+  // Handle preset question click
+  async _askPresetQuestion(question) {
+    this._aiLoading = true;
+    this._aiAnalysis = "";
+    this.requestUpdate();
+
+    try {
+      const conditions = {
+        temperature: this._simTemp,
+        humidity: this._simHumidity,
+        lightMode: this._greenhouseMode,
+      };
+
+      console.log("Asking preset question:", question);
+
+      // Import the AI assistant function
+      const { AIAssistant } = await import("./ai-assistant.js");
+      const assistant = new AIAssistant();
+
+      // Create context-aware prompt
+      const contextPrompt = `Current greenhouse conditions:
+- Temperature: ${conditions.temperature}°C
+- Humidity: ${conditions.humidity}%
+- Light Mode: ${
+        conditions.lightMode === "growth"
+          ? "Cool Daylight (6500K)"
+          : "Warm White (2700K)"
+      }
+
+Question: ${question}
+
+Please provide a specific answer based on these current conditions. Keep the response concise (2-3 sentences).`;
+
+      const response = await assistant.chat(contextPrompt);
+
+      console.log("AI Response:", response);
+      this._aiAnalysis = response;
+    } catch (error) {
+      console.error("Preset question error:", error);
+
+      if (error.message.includes("Invalid API key")) {
+        this._aiAnalysis =
+          "⚠️ Authentication failed: Please check your API key in config.js";
+      } else if (error.message.includes("Rate limit")) {
+        this._aiAnalysis = "⚠️ Rate limit exceeded: Please try again later.";
+      } else {
+        this._aiAnalysis = `⚠️ Error: ${error.message}`;
+      }
+    } finally {
+      this._aiLoading = false;
+      this.requestUpdate();
+    }
+  }
+
+  // NEW: Analyze with AI using the ai-assistant module
+  async _analyzeWithAI() {
+    this._aiLoading = true;
+    this._aiAnalysis = "";
+    this.requestUpdate();
+
+    try {
+      const conditions = {
+        temperature: this._simTemp,
+        humidity: this._simHumidity,
+        lightMode: this._greenhouseMode,
+      };
+
+      console.log("Sending AI request with conditions:", conditions);
+
+      // Use the imported AI assistant function (DeepSeek only)
+      const response = await analyzeGreenhouseConditions(conditions);
+
+      console.log("AI Response:", response);
+      this._aiAnalysis = response;
+    } catch (error) {
+      console.error("AI Analysis error:", error);
+
+      // Provide user-friendly error messages
+      if (error.message.includes("Invalid API key")) {
+        this._aiAnalysis =
+          "⚠️ Authentication failed: Please check your API key in config.js";
+      } else if (error.message.includes("Rate limit")) {
+        this._aiAnalysis = "⚠️ Rate limit exceeded: Please try again later.";
+      } else if (
+        error.message.includes("Failed to fetch") ||
+        error.message.includes("NetworkError")
+      ) {
+        this._aiAnalysis =
+          "⚠️ Network error: Please check your internet connection and API configuration.";
+      } else {
+        this._aiAnalysis = `⚠️ Error: ${error.message}`;
+      }
+    } finally {
+      this._aiLoading = false;
+      this.requestUpdate();
+    }
+  }
+
+  // Toggle preset questions panel
+  _togglePresetQuestions() {
+    this._showPresetQuestions = !this._showPresetQuestions;
+    this.requestUpdate();
+  }
+
+  // Ask a preset question
+  async _askPresetQuestion(question) {
+    this._aiLoading = true;
+    this._aiAnalysis = "";
+    this._showPresetQuestions = false; // Close the panel after selecting
+    this.requestUpdate();
+
+    try {
+      const conditions = {
+        temperature: this._simTemp,
+        humidity: this._simHumidity,
+        lightMode: this._greenhouseMode,
+      };
+
+      const lightModeDesc =
+        conditions.lightMode === "growth"
+          ? "Growth Mode with Cool Daylight (6500K) for photosynthesis"
+          : "Rest Mode with Warm White (2700K) for plant recovery";
+
+      // Create a custom prompt that includes both the question and current conditions
+      const prompt = `You are a greenhouse management assistant analyzing the following setup:
+
+**Current Conditions:**
+- Temperature: ${conditions.temperature}°C
+- Humidity: ${conditions.humidity}%
+- Light Mode: ${lightModeDesc}
+
+**CRITICAL SYSTEM CONSTRAINTS:**
+- This system has ONLY two preset light modes: Growth Mode (6500K) and Rest Mode (2700K)
+- The light settings are FIXED and CANNOT be adjusted or changed
+- The user CANNOT change color temperature, spectrum, or brightness
+- NEVER suggest: "switch to", "change to", "adjust light to", or any light mode modifications
+- If the current light mode is appropriate, simply acknowledge it
+- Focus ONLY on: temperature control, humidity adjustments, watering schedule, ventilation, and plant care timing
+
+**User Question:** ${question}
+
+Provide a helpful answer that ACCEPTS the current light mode as-is. Do NOT suggest any light changes. Keep the response practical and actionable (2-4 sentences).`;
+
+      console.log("Asking preset question:", question);
+
+      // Use the AI assistant directly with custom prompt
+      const assistant = new AIAssistant();
+      const response = await assistant.chat(prompt);
+
+      console.log("AI Response:", response);
+      this._aiAnalysis = response;
+    } catch (error) {
+      console.error("Preset question error:", error);
+
+      if (error.message.includes("Invalid API key")) {
+        this._aiAnalysis =
+          "⚠️ Authentication failed: Please check your API key in config.js";
+      } else if (error.message.includes("Rate limit")) {
+        this._aiAnalysis = "⚠️ Rate limit exceeded: Please try again later.";
+      } else {
+        this._aiAnalysis = `⚠️ Error: ${error.message}`;
+      }
+    } finally {
+      this._aiLoading = false;
+      this.requestUpdate();
+    }
+  }
+
+  // Clear AI analysis result
+  _clearAIAnalysis() {
+    this._aiAnalysis = "";
+    this.requestUpdate();
   }
 
   static get styles() {
