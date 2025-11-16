@@ -61,3 +61,22 @@ DEVICE_SPECIFIC_EVENT_TYPES = {
     # device specific overrides of specific supported button events
     "Hue tap switch": (ButtonEvent.INITIAL_PRESS,),
 }
+
+# GREENHOUSE MODE DEFINITIONS
+# Growth mode: High brightness, cool white daylight for photosynthesis
+# Rest mode: Low brightness, warm white for respiration and display
+GREENHOUSE_SCENES = {
+    "growth": {
+        "brightness": 255,  # 100% brightness
+        "color_temp_kelvin": 6500,  # Cool daylight
+        "color_temp": 153,  # Mireds (1,000,000 / 6500)
+    },
+    "rest": {
+        "brightness": 50,  # ~20% brightness
+        "color_temp_kelvin": 2700,  # Warm white
+        "color_temp": 370,  # Mireds (1,000,000 / 2700)
+    },
+}
+
+CONF_GREENHOUSE_MODE = "greenhouse_mode"
+SERVICE_SET_GREENHOUSE_SCENE = "set_greenhouse_scene"
