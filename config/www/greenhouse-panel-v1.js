@@ -1,17 +1,3 @@
-/**
- * Greenhouse Control Panel for Home Assistant
- *
- * Features:
- * - FR1: Automatic Watering Control
- * - FR2: Manual Watering Trigger
- * - FR3: Lighting Control & Scheduling
- * - FR4: Greenhouse Device Integration View
- * - FR5: Developer Simulation Mode
- * - FR6: Humidity Sensor Integration
- * - FR7: Temperature & Light Sensor Integration
- * - FR8: AI Plant Health Analysis
- */
-
 import {
   LitElement,
   html,
@@ -29,6 +15,11 @@ class GreenhousePanel extends LitElement {
       _simTemp: { type: Number },
       _simHumidity: { type: Number },
       _simLight: { type: Number },
+      _lightMode: { type: String }, // 'growth' or 'rest'
+      _autoLightEnabled: { type: Boolean }, // Auto light control state
+      _simLightState: { type: String }, // Simulated light state: 'on' or 'off'
+      _simBrightness: { type: Number }, // Simulated brightness
+      _simColorTemp: { type: Number }, // Simulated color temp
     };
   }
 
@@ -38,6 +29,12 @@ class GreenhousePanel extends LitElement {
     this._simTemp = 24.5;
     this._simHumidity = 65;
     this._simLight = 8500;
+    this._lightMode = "growth";
+    this._autoLightEnabled = false;
+    // Simulated light properties
+    this._simLightState = "off";
+    this._simBrightness = 255;
+    this._simColorTemp = 153;
   }
 
   render() {
@@ -50,7 +47,6 @@ class GreenhousePanel extends LitElement {
 
         <div class="dashboard-grid">
           ${this._renderWateringCard()} ${this._renderLightingCard()}
-          ${this._renderSensorsCard()} ${this._renderHealthCard()}
           ${this._renderDevicesCard()} ${this._renderWateringSchedule()}
           ${this._renderLightingSchedule()}
         </div>
@@ -64,9 +60,13 @@ class GreenhousePanel extends LitElement {
       <div class="header">
         <h1>
           <span>🌱</span>
-          <span>Smart Greenhouse Control System</span>
+          <span>Greenhouse Control Panel</span>
+          <span
+            style="background: #ff6b6b; color: white; padding: 4px 12px; margin-left: 16px; border-radius: 6px; font-size: 14px; font-weight: 600;"
+            >DEMO VERSION</span
+          >
         </h1>
-        <p class="header-subtitle">Greenhouse Control Panel</p>
+        <p class="header-subtitle">Smart Plant Care Automation System</p>
 
         <div class="status-bar">
           <div class="status-item">
@@ -74,13 +74,11 @@ class GreenhousePanel extends LitElement {
             <span>System Running</span>
           </div>
           <div class="status-item">
-            <span>🌡️ Temp: ${this._simTemp}°C</span>
-          </div>
-          <div class="status-item">
-            <span>💧 Humidity: ${this._simHumidity}%</span>
-          </div>
-          <div class="status-item">
-            <span>☀️ Light: ${this._simLight} lux</span>
+            <span
+              >${this._lightMode === "growth"
+                ? "🌞 Growth Mode"
+                : "🌙 Rest Mode"}</span
+            >
           </div>
           <div class="status-item">
             <span>⏰ Last Watering: 2 hours ago</span>
@@ -153,14 +151,14 @@ class GreenhousePanel extends LitElement {
         <button class="button" @click=${this._manualWater}>
           ⚡ Manual Water Now
         </button>
-        <button class="button secondary">⚙️ Configure Watering Schedule</button>
       </div>
     `;
   }
 
-  // Smart Lighting Control
+  // Smart Lighting Control - OPTIMIZED VERSION
   _renderLightingCard() {
-    const lightState = this.hass.states["light.grow_light"]?.state || "off";
+    // Always use simulated state for demo
+    const isLightOn = this._simLightState === "on";
 
     return html`
       <div class="card">
@@ -171,121 +169,97 @@ class GreenhousePanel extends LitElement {
           </div>
         </div>
 
-        <div class="sensor-reading">
-          <span class="reading-label">Current Light Intensity</span>
-          <span class="reading-value">
-            ${this._simLight}
-            <span class="reading-unit">lux</span>
-          </span>
-        </div>
-        <div class="progress-bar">
-          <div
-            class="progress-fill"
-            style="width: ${(this._simLight / 20000) * 100}%"
-          ></div>
-        </div>
-
         <div class="control-group">
+          <!-- Auto Light Control Toggle -->
           <div class="control-item">
-            <span>Grow Light</span>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <span>Auto Light Control</span>
+              <span
+                style="font-size: 11px; color: var(--secondary-text-color);"
+              >
+                ${this._autoLightEnabled
+                  ? "Schedule-based automation"
+                  : "Manual control mode"}
+              </span>
+            </div>
             <div
-              class="toggle-switch ${lightState === "on" ? "active" : ""}"
-              @click=${this._toggleGrowLight}
+              class="toggle-switch ${this._autoLightEnabled ? "active" : ""}"
+              @click=${this._toggleAutoLight}
             ></div>
           </div>
+
+          <!-- Current Light Status -->
+          <div class="control-item">
+            <span>Light Status</span>
+            <span
+              style="color: ${isLightOn
+                ? "var(--success-color)"
+                : "var(--disabled-text-color)"}; font-weight: 600;"
+            >
+              ${isLightOn ? "✓ On" : "○ Off"}
+            </span>
+          </div>
+
+          <!-- Current Mode -->
+          <div class="control-item">
+            <span>Current Mode</span>
+            <span style="color: var(--primary-color); font-weight: 600;">
+              ${this._lightMode === "growth"
+                ? "🌞 Growth Mode"
+                : "🌙 Rest Mode"}
+            </span>
+          </div>
+
+          <!-- Color Temperature -->
           <div class="control-item">
             <span>Color Temperature</span>
-            <span style="color: var(--warning-color);">🌅 Warm Light</span>
+            <span style="color: var(--warning-color); font-size: 13px;">
+              ${this._lightMode === "growth"
+                ? "☀️ Cool Daylight (6500K)"
+                : "🌙 Warm White (2700K)"}
+            </span>
           </div>
         </div>
 
-        <button class="button secondary">📅 Set Lighting Schedule</button>
-      </div>
-    `;
-  }
+        <!-- Quick Manual Control -->
+        <button
+          class="button ${isLightOn ? "" : "secondary"}"
+          @click=${this._manualToggleLight}
+          style="margin-top: 12px;"
+        >
+          ${isLightOn ? "💡 Turn Off Light" : "💡 Turn On Light"}
+        </button>
 
-  // Environmental Sensors
-  _renderSensorsCard() {
-    return html`
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <span class="icon">🌡️</span>
-            <span>Environmental Sensors</span>
-          </div>
+        <!-- Mode Selection Buttons -->
+        <div
+          class="divider"
+          style="margin: 16px 0; font-size: 13px; color: var(--secondary-text-color); text-align: center;"
+        >
+          Apply Scene Presets
         </div>
-
-        <div class="sensor-reading">
-          <span class="reading-label">Temperature</span>
-          <span class="reading-value">
-            ${this._simTemp}
-            <span class="reading-unit">°C</span>
-          </span>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <button
+            class="button ${this._lightMode === "growth" ? "" : "secondary"}"
+            @click=${() => this._applyLightScene("growth")}
+          >
+            🌞 Growth Mode
+          </button>
+          <button
+            class="button ${this._lightMode === "rest" ? "" : "secondary"}"
+            @click=${() => this._applyLightScene("rest")}
+          >
+            🌙 Rest Mode
+          </button>
         </div>
-
-        <div class="sensor-reading">
-          <span class="reading-label">Humidity</span>
-          <span class="reading-value">
-            ${this._simHumidity}
-            <span class="reading-unit">%</span>
-          </span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill" style="width: ${this._simHumidity}%"></div>
-        </div>
-
-        <div class="info-box success">
-          ✓ Environmental parameters normal, suitable for plant growth
-        </div>
-      </div>
-    `;
-  }
-
-  // Plant Health Assessment (AI)
-  _renderHealthCard() {
-    const healthScore = 87;
-
-    return html`
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <span class="icon">🤖</span>
-            <span>Plant Health Assessment (AI)</span>
-          </div>
-        </div>
-
-        <div class="health-score-container">
-          <div class="health-score">${healthScore}</div>
-          <div class="health-info">
-            <div class="health-label">Overall Health Score</div>
-            <div class="health-status">Growing Well 📈</div>
-            <div
-              style="font-size: 12px; color: var(--secondary-text-color); margin-top: 4px;"
-            >
-              Based on temperature, humidity, and light data analysis
-            </div>
-          </div>
-        </div>
-
-        <div class="info-box success">
-          <strong>✓ Assessment Factors</strong><br />
-          • Temperature Suitability: 92 pts<br />
-          • Humidity Suitability: 85 pts<br />
-          • Light Sufficiency: 88 pts<br />
-          • Watering Frequency: 84 pts
-        </div>
-
-        <div class="info-box info">
-          💡 <strong>AI Recommendation:</strong> Continue current care strategy
-        </div>
-
-        <div class="chart-placeholder">📊 Health Score Trend (Past 7 Days)</div>
       </div>
     `;
   }
 
   // Greenhouse Devices Overview
   _renderDevicesCard() {
+    // Always use simulated state
+    const isLightOn = this._simLightState === "on";
+
     return html`
       <div class="card wide-card">
         <div class="card-header">
@@ -293,51 +267,23 @@ class GreenhousePanel extends LitElement {
             <span class="icon">🏡</span>
             <span>Greenhouse Devices Overview</span>
           </div>
-          <button class="button secondary" style="width: auto; margin: 0;">
-            + Add Device
-          </button>
         </div>
 
         <div class="device-list">
-          ${this._renderDevice("🔌", "Smart Plug", true, "Running")}
-          ${this._renderDevice("💡", "Grow Light", true, "On")}
-          ${this._renderDevice(
-            "🌡️",
-            "Temp Sensor",
-            false,
-            `${this._simTemp}°C`,
-          )}
-          ${this._renderDevice(
-            "💧",
-            "Humidity Sensor",
-            false,
-            `${this._simHumidity}%`,
-          )}
-          ${this._renderDevice(
-            "☀️",
-            "Light Sensor",
-            false,
-            `${this._simLight} lux`,
-          )}
-          ${this._renderDevice("📷", "Camera", false, "Online")}
-        </div>
-      </div>
-    `;
-  }
+          <div class="device-card active" @click=${this._handleDeviceClick}>
+            <div class="device-icon">🔌</div>
+            <div class="device-name">Smart Plug</div>
+            <div class="device-status">Running</div>
+          </div>
 
-  // Device card
-  _renderDevice(icon, name, active, status) {
-    return html`
-      <div class="device-card ${active ? "active" : ""}">
-        <div class="device-icon">${icon}</div>
-        <div class="device-name">${name}</div>
-        <div
-          class="device-status"
-          style="color: ${active
-            ? "var(--success-color)"
-            : "var(--secondary-text-color)"}"
-        >
-          ${status}
+          <div
+            class="device-card ${isLightOn ? "active" : ""}"
+            @click=${this._handleDeviceClick}
+          >
+            <div class="device-icon">💡</div>
+            <div class="device-name">Grow Light</div>
+            <div class="device-status">${isLightOn ? "On" : "Off"}</div>
+          </div>
         </div>
       </div>
     `;
@@ -355,20 +301,18 @@ class GreenhousePanel extends LitElement {
         </div>
 
         <div class="schedule-item">
-          <div class="schedule-time">⏰ Daily at 06:00</div>
+          <div class="schedule-time">🌅 Daily at 06:00</div>
           <div class="schedule-action">
             Morning watering - 5 minutes duration
           </div>
         </div>
 
         <div class="schedule-item">
-          <div class="schedule-time">⏰ Daily at 18:00</div>
+          <div class="schedule-time">🌆 Daily at 18:00</div>
           <div class="schedule-action">
             Evening watering - 5 minutes duration
           </div>
         </div>
-
-        <button class="button secondary">+ Add New Schedule</button>
       </div>
     `;
   }
@@ -379,24 +323,22 @@ class GreenhousePanel extends LitElement {
       <div class="card">
         <div class="card-header">
           <div class="card-title">
-            <span class="icon">🌅</span>
+            <span class="icon">📅</span>
             <span>Lighting Schedule</span>
           </div>
         </div>
 
         <div class="schedule-item">
-          <div class="schedule-time">☀️ Growth Period (06:00-22:00)</div>
+          <div class="schedule-time">🌞 Growth Period (06:00-22:00)</div>
           <div class="schedule-action">
-            Full spectrum lighting, warm color temperature
+            Cool daylight (6500K), 100% brightness
           </div>
         </div>
 
         <div class="schedule-item">
           <div class="schedule-time">🌙 Rest Period (22:00-06:00)</div>
-          <div class="schedule-action">All lights off</div>
+          <div class="schedule-action">Warm white (2700K), 20% brightness</div>
         </div>
-
-        <button class="button secondary">⚙️ Custom Scene</button>
       </div>
     `;
   }
@@ -587,34 +529,149 @@ class GreenhousePanel extends LitElement {
     `;
   }
 
-  // Event Handlers
-  // Open or close the developer simulation panel
+  // ==================== EVENT HANDLERS ====================
+
+  // Toggle developer simulation mode
   _toggleSimMode() {
     this._simMode = !this._simMode;
     this.requestUpdate();
   }
 
-  // open or close auto watering
+  // Toggle auto watering
   _toggleAutoWatering() {
     this.hass.callService("switch", "toggle", {
       entity_id: "switch.auto_watering",
     });
   }
 
-  // open or close growing light
-  _toggleGrowLight() {
-    this.hass.callService("light", "toggle", {
-      entity_id: "light.grow_light",
-    });
+  // Toggle auto light control (schedule-based)
+  _toggleAutoLight() {
+    this._autoLightEnabled = !this._autoLightEnabled;
+
+    if (this._autoLightEnabled) {
+      // Enable auto control - turn on light with current mode settings
+      this._simLightState = "on";
+      const settings = this._getLightSettings(this._lightMode);
+      this._simBrightness = settings.brightness;
+      this._simColorTemp = settings.color_temp;
+
+      this.dispatchEvent(
+        new CustomEvent("hass-notification", {
+          detail: {
+            message:
+              "Auto light control enabled - Light turned on with schedule settings",
+          },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    } else {
+      // Disable auto control - just switch to manual mode, don't touch the light
+      this.dispatchEvent(
+        new CustomEvent("hass-notification", {
+          detail: {
+            message: "Auto light control disabled - Switched to manual mode",
+          },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
+
+    this.requestUpdate();
   }
 
-  // manual water now
+  // Manual toggle light (simple on/off without changing settings)
+  _manualToggleLight() {
+    if (this._simLightState === "on") {
+      // Turn off light
+      this._simLightState = "off";
+
+      // IMPORTANT: When manually turning off, also disable auto control
+      if (this._autoLightEnabled) {
+        this._autoLightEnabled = false;
+        this.dispatchEvent(
+          new CustomEvent("hass-notification", {
+            detail: { message: "Light turned off - Auto control disabled" },
+            bubbles: true,
+            composed: true,
+          }),
+        );
+      } else {
+        this.dispatchEvent(
+          new CustomEvent("hass-notification", {
+            detail: { message: "Light turned off" },
+            bubbles: true,
+            composed: true,
+          }),
+        );
+      }
+    } else {
+      // Turn on light with current mode settings
+      this._simLightState = "on";
+      const settings = this._getLightSettings(this._lightMode);
+      this._simBrightness = settings.brightness;
+      this._simColorTemp = settings.color_temp;
+
+      this.dispatchEvent(
+        new CustomEvent("hass-notification", {
+          detail: {
+            message: `Light turned on - ${
+              this._lightMode === "growth" ? "Growth" : "Rest"
+            } Mode`,
+          },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
+
+    this.requestUpdate();
+  }
+
+  // Apply light scene (Growth or Rest mode)
+  _applyLightScene(mode) {
+    this._lightMode = mode;
+    const settings = this._getLightSettings(mode);
+
+    // Turn on light with scene settings
+    this._simLightState = "on";
+    this._simBrightness = settings.brightness;
+    this._simColorTemp = settings.color_temp;
+
+    const modeName = mode === "growth" ? "Growth Mode" : "Rest Mode";
+    this.dispatchEvent(
+      new CustomEvent("hass-notification", {
+        detail: { message: `${modeName} applied` },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+
+    this.requestUpdate();
+  }
+
+  // Get light settings for a specific mode
+  _getLightSettings(mode) {
+    if (mode === "growth") {
+      return {
+        brightness: 255, // 100%
+        color_temp: 153, // 6500K in mireds
+      };
+    } else {
+      return {
+        brightness: 50, // ~20%
+        color_temp: 370, // 2700K in mireds
+      };
+    }
+  }
+
+  // Manual watering
   _manualWater() {
     this.hass.callService("switch", "turn_on", {
       entity_id: "switch.manual_watering",
     });
 
-    // Show notification
     this.dispatchEvent(
       new CustomEvent("hass-notification", {
         detail: { message: "Manual watering started" },
@@ -624,6 +681,18 @@ class GreenhousePanel extends LitElement {
     );
   }
 
+  // Handle device card click
+  _handleDeviceClick() {
+    this.dispatchEvent(
+      new CustomEvent("hass-notification", {
+        detail: { message: "Device details clicked" },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  // Update simulation values
   _updateSimValue(type, value) {
     switch (type) {
       case "temp":
@@ -642,7 +711,7 @@ class GreenhousePanel extends LitElement {
     this.requestUpdate();
   }
 
-  // update simulation value in different scenarios
+  // Apply test scenarios
   _applyScenario(scenario) {
     switch (scenario) {
       case "drought":
@@ -668,6 +737,7 @@ class GreenhousePanel extends LitElement {
     this.requestUpdate();
   }
 
+  // Update sensor value
   _updateSensor(entityId, value) {
     if (this.hass.states[entityId]) {
       this.hass.callService("input_number", "set_value", {
@@ -679,7 +749,6 @@ class GreenhousePanel extends LitElement {
 
   static get styles() {
     return css`
-      /* Minimal inline styles - main styles loaded from external CSS */
       :host {
         display: block;
         height: 100%;

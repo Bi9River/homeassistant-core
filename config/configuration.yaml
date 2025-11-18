@@ -19,6 +19,6 @@ panel_custom:
     url_path: greenhouse
     sidebar_title: Greenhouse
     sidebar_icon: mdi:greenhouse
-    module_url: /local/greenhouse-panel.js
+    module_url: /local/greenhouse-panel-v1.js
     config:
       test_mode: true
