@@ -36,6 +36,7 @@ from homeassistant.util import color as color_util
 from ..bridge import HueBridge, HueConfigEntry
 from ..const import DOMAIN
 from ..greenhouse_light import GreenhouseLightMixin
+from ..watering_plug import WateringPlugMixin
 from .entity import HueBaseEntity
 from .helpers import (
     normalize_hue_brightness,
@@ -72,8 +73,9 @@ async def async_setup_entry(
     )
 
 
+# SEP-14 & SEP-15: Inherit from BOTH Mixins
 # pylint: disable-next=hass-enforce-class-module
-class HueLight(GreenhouseLightMixin, HueBaseEntity, LightEntity):
+class HueLight(WateringPlugMixin, GreenhouseLightMixin, HueBaseEntity, LightEntity):
     """Representation of a Hue light."""
 
     _fixed_color_mode: ColorMode | None = None
@@ -88,8 +90,16 @@ class HueLight(GreenhouseLightMixin, HueBaseEntity, LightEntity):
         resource: Light | GroupedLight,
     ) -> None:
         """Initialize the light."""
+        # 1. Explicitly initialize the Hue Base Entity
         HueBaseEntity.__init__(self, bridge, controller, resource)
+
+        # 2. Initialize Greenhouse Mixin (SEP-15)
         GreenhouseLightMixin.__init__(self)
+
+        # 3. Initialize Watering Mixin (SEP-14)
+        WateringPlugMixin.__init__(self)
+
+        # 4. Initialize Standard Light Entity
         LightEntity.__init__(self)
 
         self.resource = resource
@@ -132,12 +142,15 @@ class HueLight(GreenhouseLightMixin, HueBaseEntity, LightEntity):
     async def async_added_to_hass(self) -> None:
         """Handle entity which will be added."""
         await super().async_added_to_hass()
+        # Register schedulers for both features
         await GreenhouseLightMixin.async_added_to_hass(self)
+        await WateringPlugMixin.async_added_to_hass(self)
 
     async def async_will_remove_from_hass(self) -> None:
         """Handle entity which will be removed."""
         await super().async_will_remove_from_hass()
         await GreenhouseLightMixin.async_will_remove_from_hass(self)
+        await WateringPlugMixin.async_will_remove_from_hass(self)
 
     @property
     def brightness(self) -> int | None:
@@ -213,6 +226,11 @@ class HueLight(GreenhouseLightMixin, HueBaseEntity, LightEntity):
         if self._greenhouse_active:
             attributes["greenhouse_mode"] = self._greenhouse_mode
             attributes["greenhouse_active"] = True
+
+        # SEP-21: Merge Watering Attributes
+        # Now we can safely call the method from the mixin
+        attributes.update(self._get_watering_attributes())
+
         return attributes
 
     @property
@@ -228,6 +246,8 @@ class HueLight(GreenhouseLightMixin, HueBaseEntity, LightEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the device on."""
+        # SEP-14: Check if this is a watering trigger
+
         transition = normalize_hue_transition(kwargs.get(ATTR_TRANSITION))
         xy_color = kwargs.get(ATTR_XY_COLOR)
         color_temp = normalize_hue_colortemp(kwargs.get(ATTR_COLOR_TEMP_KELVIN))

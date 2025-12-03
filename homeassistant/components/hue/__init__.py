@@ -1,5 +1,7 @@
 """Support for the Philips Hue system."""
 
+import logging
+
 from aiohue.util import normalize_bridge_id
 import voluptuous as vol
 
@@ -11,12 +13,20 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
 from .bridge import HueBridge, HueConfigEntry
-from .const import DOMAIN, GREENHOUSE_SCENES, SERVICE_SET_GREENHOUSE_SCENE
+from .const import (
+    DOMAIN,
+    GREENHOUSE_SCENES,
+    SERVICE_ACTIVATE_WATERING,
+    SERVICE_SET_GREENHOUSE_SCENE,
+)
 from .migration import check_migration
 from .services import async_setup_services
 
+_LOGGER = logging.getLogger(__name__)
+
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
+# --- GREENHOUSE LOGIC ---
 GREENHOUSE_SERVICE_SCHEMA = vol.Schema(
     {
         vol.Required("mode"): vol.In(list(GREENHOUSE_SCENES.keys())),
@@ -41,14 +51,62 @@ async def async_handle_greenhouse_service(hass, call):
 
     if target_entities:
         service_data[ATTR_ENTITY_ID] = target_entities
-    else:
-        # If no entity provided, target all Hue lights (naive implementation)
-        # A better approach strictly filters for Hue entities, but for now:
-        pass
 
-    # We proxy this request to the standard light.turn_on service
-    # This ensures we don't break V1/V2 logic by trying to talk to the bridge directly here.
+    # Proxy request to light.turn_on
     await hass.services.async_call("light", "turn_on", service_data, blocking=True)
+
+
+# --- SMART WATERING LOGIC ---
+WATERING_SERVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_ids,  # Entity ID is required
+    }
+)
+
+
+async def async_handle_watering_service(hass: HomeAssistant, call):
+    """Handle the service call to trigger smart watering."""
+    target_entities = call.data.get(ATTR_ENTITY_ID)
+    _LOGGER.info("Manual watering triggered for entities: %s", target_entities)
+
+    for entity_id in target_entities:
+        # 1. Verify entity exists
+        if not hass.states.get(entity_id):
+            _LOGGER.warning("Entity %s not found in state machine", entity_id)
+            continue
+
+        # 2. Get domain
+        domain = entity_id.split(".")[0]
+
+        # 3. Get Component
+        # We access the component directly from hass.data to get the runtime object
+        component = hass.data.get(domain)
+
+        if not component or not hasattr(component, "get_entity"):
+            _LOGGER.warning("Component for domain '%s' not loaded", domain)
+            continue
+
+        # 4. Get runtime entity object
+        entity_object = component.get_entity(entity_id)
+
+        if not entity_object:
+            _LOGGER.warning("Could not get runtime entity object for %s", entity_id)
+            continue
+
+        # 5. Duck Typing Check
+        if not hasattr(entity_object, "async_start_watering"):
+            _LOGGER.error(
+                "Entity %s does not support 'async_start_watering'. Is it a Hue Smart Plug?",
+                entity_id,
+            )
+            continue
+
+        # 6. Execute
+        try:
+            _LOGGER.debug("Calling async_start_watering for %s", entity_id)
+            await entity_object.async_start_watering()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to start watering for %s: %s", entity_id, err)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -57,7 +115,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     # 1. Setup existing Hue services
     async_setup_services(hass)
 
-    # 2. Register new Greenhouse Service
+    # 2. Register Greenhouse Service
     async def _async_greenhouse_handler(call):
         await async_handle_greenhouse_service(hass, call)
 
@@ -66,6 +124,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         SERVICE_SET_GREENHOUSE_SCENE,
         _async_greenhouse_handler,
         schema=GREENHOUSE_SERVICE_SCHEMA,
+    )
+
+    # 3. Register Watering Service
+    async def _async_watering_handler(call):
+        await async_handle_watering_service(hass, call)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_ACTIVATE_WATERING,  # Now this variable is defined via import
+        _async_watering_handler,
+        schema=WATERING_SERVICE_SCHEMA,
     )
 
     return True

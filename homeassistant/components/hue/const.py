@@ -80,3 +80,13 @@ GREENHOUSE_SCENES = {
 
 CONF_GREENHOUSE_MODE = "greenhouse_mode"
 SERVICE_SET_GREENHOUSE_SCENE = "set_greenhouse_scene"
+
+# SMART WATERING DEFINITIONS (SEP-14)
+CONF_WATERING_DURATION = "duration"
+DEFAULT_WATERING_DURATION = 10  # Minutes
+SERVICE_ACTIVATE_WATERING = "activate_watering"
+ATTR_NEXT_WATERING = "next_watering_time"
+ATTR_WATERING_ACTIVE = "watering_active"
+
+# Special flag passed to switch.turn_on to indicate this is a watering event
+ATTR_HUE_WATERING_FLAG = "hue_watering_trigger"
