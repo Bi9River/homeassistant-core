@@ -5,6 +5,9 @@ config2/*
 !/config/www/*
 !/config/configuration.yaml
 
+# API Keys and sensitive configuration
+/config/www/API_KEY.js
+
 tests/testing_config/deps
 tests/testing_config/home-assistant.log*
 
