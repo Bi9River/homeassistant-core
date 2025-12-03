@@ -29,30 +29,61 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 # --- GREENHOUSE LOGIC ---
 GREENHOUSE_SERVICE_SCHEMA = vol.Schema(
     {
-        vol.Required("mode"): vol.In(list(GREENHOUSE_SCENES.keys())),
-        vol.Optional(
-            ATTR_ENTITY_ID
-        ): cv.entity_ids,  # Optional: Apply to specific lights only
+        vol.Required("mode"): vol.In([*list(GREENHOUSE_SCENES.keys()), "manual"]),
+        vol.Optional(ATTR_ENTITY_ID): cv.entity_ids,
     }
 )
 
 
-async def async_handle_greenhouse_service(hass, call):
+async def async_handle_greenhouse_service(hass: HomeAssistant, call):
     """Handle the service call to switch greenhouse modes."""
     mode = call.data["mode"]
     target_entities = call.data.get(ATTR_ENTITY_ID)
-    scene_data = GREENHOUSE_SCENES[mode]
 
-    # Prepare the data for the standard light.turn_on service
-    service_data = {
-        "brightness": scene_data["brightness"],
-        "color_temp": scene_data["color_temp"],
-    }
+    _LOGGER.info("Greenhouse service called with mode: %s", mode)
 
-    if target_entities:
-        service_data[ATTR_ENTITY_ID] = target_entities
+    # Use Entity Registry to find the runtime object (Duck Typing Pattern)
+    # We use hass.data directly as we did for watering
+    for entity_id in target_entities:
+        # 1. Verify entity exists
+        if not hass.states.get(entity_id):
+            continue
 
-    # Proxy request to light.turn_on
+        domain = entity_id.split(".")[0]
+        component = hass.data.get(domain)
+
+        if not component or not hasattr(component, "get_entity"):
+            continue
+
+        entity_object = component.get_entity(entity_id)
+        if not entity_object:
+            continue
+
+        # 2. Check capabilities
+        if not hasattr(entity_object, "set_greenhouse_mode"):
+            _LOGGER.warning("Entity %s does not support greenhouse mode", entity_id)
+            continue
+
+        # 3. Logic Switch
+        if mode == "manual":
+            # Disable auto-schedule
+            entity_object.clear_greenhouse_mode()
+            _LOGGER.debug("Greenhouse automation disabled for %s", entity_id)
+        else:
+            # Enable auto-schedule and set specific mode
+            entity_object.set_greenhouse_mode(mode)
+
+            # Also apply the physical light settings immediately
+            scene_data = GREENHOUSE_SCENES[mode]
+            service_data = {
+                "entity_id": entity_id,
+                "brightness": scene_data["brightness"],
+                "color_temp": scene_data["color_temp"],
+            }
+            await hass.services.async_call(
+                "light", "turn_on", service_data, blocking=True
+            )
+            _LOGGER.debug("Greenhouse mode %s applied to %s", mode, entity_id)
     await hass.services.async_call("light", "turn_on", service_data, blocking=True)
 
 
