@@ -3,7 +3,7 @@ import {
   html,
   css,
 } from "https://unpkg.com/lit@3.0.0/index.js?module";
-import { analyzeGreenhouseConditions } from "./ai-assistant.js";
+import { analyzeGreenhouseConditions, AIAssistant } from "./ai-assistant.js";
 
 class GreenhousePanel extends LitElement {
   static get properties() {
@@ -237,6 +237,40 @@ class GreenhousePanel extends LitElement {
 
   // NEW: AI Analysis System Card
   _renderAIAnalysisCard() {
+    // Preset questions for quick AI consultation
+    const presetQuestions = [
+      {
+        icon: "🌱",
+        question: "How can I optimize plant growth?",
+        category: "Growth",
+      },
+      {
+        icon: "💧",
+        question: "Is my humidity level appropriate?",
+        category: "Environment",
+      },
+      {
+        icon: "🌡️",
+        question: "Should I adjust the temperature?",
+        category: "Environment",
+      },
+      {
+        icon: "💡",
+        question: "Is my lighting setup optimal?",
+        category: "Lighting",
+      },
+      {
+        icon: "🐛",
+        question: "How to prevent common plant diseases?",
+        category: "Health",
+      },
+      {
+        icon: "⏰",
+        question: "What's the best watering schedule?",
+        category: "Care",
+      },
+    ];
+
     return html`
       <div class="card">
         <div class="card-header">
@@ -244,6 +278,18 @@ class GreenhousePanel extends LitElement {
             <span class="icon">🤖</span>
             <span>AI Analysis System</span>
           </div>
+          <button
+            class="preset-toggle-btn"
+            @click=${this._togglePresetQuestions}
+            title="Quick Questions"
+          >
+            <span class="btn-icon"
+              >${this._showPresetQuestions ? "✕" : "💬"}</span
+            >
+            <span class="btn-text"
+              >${this._showPresetQuestions ? "Close" : "Quick Questions"}</span
+            >
+          </button>
         </div>
 
         <div style="margin: 16px 0;">
@@ -279,6 +325,31 @@ class GreenhousePanel extends LitElement {
           </div>
         </div>
 
+        <!-- Preset Questions Panel -->
+        ${this._showPresetQuestions
+          ? html`
+              <div class="preset-questions-panel">
+                <div class="preset-questions-header">
+                  <span>💬</span>
+                  <span>Quick Questions</span>
+                </div>
+                <div class="preset-questions-grid">
+                  ${presetQuestions.map(
+                    (q) => html`
+                      <button
+                        class="preset-question-btn"
+                        @click=${() => this._askPresetQuestion(q.question)}
+                        ?disabled=${this._aiLoading}
+                      >
+                        <span class="question-icon">${q.icon}</span>
+                        <span class="question-text">${q.question}</span>
+                      </button>
+                    `,
+                  )}
+                </div>
+              </div>
+            `
+          : ""}
         ${this._aiAnalysis
           ? html`
               <div class="ai-recommendation-box">
@@ -299,8 +370,22 @@ class GreenhousePanel extends LitElement {
           ?disabled=${this._aiLoading}
           style="margin-top: 12px;"
         >
-          ${this._aiLoading ? "⏳ Analyzing..." : "🤖 Get AI Analysis"}
+          ${this._aiLoading
+            ? "⏳ Analyzing..."
+            : "🤖 Analyze Current Conditions"}
         </button>
+
+        ${this._aiAnalysis
+          ? html`
+              <button
+                class="button secondary"
+                @click=${this._clearAIAnalysis}
+                style="margin-top: 8px;"
+              >
+                🗑️ Clear Result
+              </button>
+            `
+          : ""}
       </div>
     `;
   }
@@ -765,12 +850,12 @@ Please provide a specific answer based on these current conditions. Keep the res
         lightMode: this._lightMode,
       };
 
-      // console.log("Sending AI request with conditions:", conditions);
+      console.log("Sending AI request with conditions:", conditions);
 
       // Use the imported AI assistant function (DeepSeek only)
       const response = await analyzeGreenhouseConditions(conditions);
 
-      // console.log("AI Response:", response);
+      console.log("AI Response:", response);
       this._aiAnalysis = response;
     } catch (error) {
       console.error("AI Analysis error:", error);
@@ -794,6 +879,82 @@ Please provide a specific answer based on these current conditions. Keep the res
       this._aiLoading = false;
       this.requestUpdate();
     }
+  }
+
+  // Toggle preset questions panel
+  _togglePresetQuestions() {
+    this._showPresetQuestions = !this._showPresetQuestions;
+    this.requestUpdate();
+  }
+
+  // Ask a preset question
+  async _askPresetQuestion(question) {
+    this._aiLoading = true;
+    this._aiAnalysis = "";
+    this._showPresetQuestions = false; // Close the panel after selecting
+    this.requestUpdate();
+
+    try {
+      const conditions = {
+        temperature: this._simTemp,
+        humidity: this._simHumidity,
+        lightMode: this._lightMode,
+      };
+
+      const lightModeDesc =
+        conditions.lightMode === "growth"
+          ? "Growth Mode with Cool Daylight (6500K) for photosynthesis"
+          : "Rest Mode with Warm White (2700K) for plant recovery";
+
+      // Create a custom prompt that includes both the question and current conditions
+      const prompt = `You are a greenhouse management assistant analyzing the following setup:
+
+**Current Conditions:**
+- Temperature: ${conditions.temperature}°C
+- Humidity: ${conditions.humidity}%
+- Light Mode: ${lightModeDesc}
+
+**CRITICAL SYSTEM CONSTRAINTS:**
+- This system has ONLY two preset light modes: Growth Mode (6500K) and Rest Mode (2700K)
+- The light settings are FIXED and CANNOT be adjusted or changed
+- The user CANNOT change color temperature, spectrum, or brightness
+- NEVER suggest: "switch to", "change to", "adjust light to", or any light mode modifications
+- If the current light mode is appropriate, simply acknowledge it
+- Focus ONLY on: temperature control, humidity adjustments, watering schedule, ventilation, and plant care timing
+
+**User Question:** ${question}
+
+Provide a helpful answer that ACCEPTS the current light mode as-is. Do NOT suggest any light changes. Keep the response practical and actionable (2-4 sentences).`;
+
+      console.log("Asking preset question:", question);
+
+      // Use the AI assistant directly with custom prompt
+      const assistant = new AIAssistant();
+      const response = await assistant.chat(prompt);
+
+      console.log("AI Response:", response);
+      this._aiAnalysis = response;
+    } catch (error) {
+      console.error("Preset question error:", error);
+
+      if (error.message.includes("Invalid API key")) {
+        this._aiAnalysis =
+          "⚠️ Authentication failed: Please check your API key in config.js";
+      } else if (error.message.includes("Rate limit")) {
+        this._aiAnalysis = "⚠️ Rate limit exceeded: Please try again later.";
+      } else {
+        this._aiAnalysis = `⚠️ Error: ${error.message}`;
+      }
+    } finally {
+      this._aiLoading = false;
+      this.requestUpdate();
+    }
+  }
+
+  // Clear AI analysis result
+  _clearAIAnalysis() {
+    this._aiAnalysis = "";
+    this.requestUpdate();
   }
 
   static get styles() {

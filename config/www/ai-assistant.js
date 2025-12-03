@@ -84,19 +84,32 @@ class AIAssistant {
 export async function analyzeGreenhouseConditions(conditions) {
   const { temperature, humidity, lightMode } = conditions;
 
-  const prompt = `Based on the following greenhouse conditions, provide a brief analysis and recommendation:
+  const lightModeDesc =
+    lightMode === "growth"
+      ? "Growth Mode with Cool Daylight (6500K) for photosynthesis"
+      : "Rest Mode with Warm White (2700K) for plant recovery";
+
+  const prompt = `You are analyzing a smart greenhouse system with the following current conditions:
+
+**Current Settings:**
 - Temperature: ${temperature}°C
 - Humidity: ${humidity}%
-- Light Mode: ${
-    lightMode === "growth" ? "Cool Daylight (6500K)" : "Warm White (2700K)"
-  }
+- Light Mode: ${lightModeDesc}
 
-Please provide:
-1. Current plant health assessment
-2. Any adjustments needed
-3. One actionable recommendation
+**CRITICAL SYSTEM CONSTRAINTS:**
+- This system has ONLY two preset light modes: Growth Mode (6500K) and Rest Mode (2700K)
+- The light settings are FIXED and CANNOT be modified by the user
+- NEVER suggest: "switch to", "change to", "increase light", "adjust spectrum", or any light modifications
+- The current light mode is working as designed and should be accepted as-is
+- Focus ONLY on: temperature adjustments, humidity control, watering timing, and general plant care
 
-Keep the response concise (2-3 sentences).`;
+**Your Task:**
+Provide a brief assessment focusing on:
+1. How suitable the current temperature and humidity are for plant health
+2. Any adjustments needed for temperature or humidity (NOT light)
+3. One actionable care tip (watering schedule, ventilation, monitoring, etc.)
+
+Keep the response positive, constructive, and concise (2-3 sentences). NEVER mention changing light modes or color temperature.`;
 
   try {
     const assistant = new AIAssistant();
@@ -117,19 +130,32 @@ Keep the response concise (2-3 sentences).`;
 export async function analyzeGreenhouseConditionsStream(conditions, onChunk) {
   const { temperature, humidity, lightMode } = conditions;
 
-  const prompt = `Based on the following greenhouse conditions, provide a brief analysis and recommendation:
+  const lightModeDesc =
+    lightMode === "growth"
+      ? "Growth Mode with Cool Daylight (6500K) for photosynthesis"
+      : "Rest Mode with Warm White (2700K) for plant recovery";
+
+  const prompt = `You are analyzing a smart greenhouse system with the following current conditions:
+
+**Current Settings:**
 - Temperature: ${temperature}°C
 - Humidity: ${humidity}%
-- Light Mode: ${
-    lightMode === "growth" ? "Cool Daylight (6500K)" : "Warm White (2700K)"
-  }
+- Light Mode: ${lightModeDesc}
 
-Please provide:
-1. Current plant health assessment
-2. Any adjustments needed
-3. One actionable recommendation
+**CRITICAL SYSTEM CONSTRAINTS:**
+- This system has ONLY two preset light modes: Growth Mode (6500K) and Rest Mode (2700K)
+- The light settings are FIXED and CANNOT be modified by the user
+- NEVER suggest: "switch to", "change to", "increase light", "adjust spectrum", or any light modifications
+- The current light mode is working as designed and should be accepted as-is
+- Focus ONLY on: temperature adjustments, humidity control, watering timing, and general plant care
 
-Keep the response concise (2-3 sentences).`;
+**Your Task:**
+Provide a brief assessment focusing on:
+1. How suitable the current temperature and humidity are for plant health
+2. Any adjustments needed for temperature or humidity (NOT light)
+3. One actionable care tip (watering schedule, ventilation, monitoring, etc.)
+
+Keep the response positive, constructive, and concise (2-3 sentences). NEVER mention changing light modes or color temperature.`;
 
   try {
     const assistant = new AIAssistant();
