@@ -223,9 +223,8 @@ class HueLight(WateringPlugMixin, GreenhouseLightMixin, HueBaseEntity, LightEnti
             "dynamics": self.resource.dynamics.status.value,
         }
         # SEP-27: Merge Greenhouse Attributes
-        if self._greenhouse_active:
-            attributes["greenhouse_mode"] = self._greenhouse_mode
-            attributes["greenhouse_active"] = True
+        attributes["greenhouse_active"] = self._greenhouse_active
+        attributes["greenhouse_mode"] = self._greenhouse_mode or "manual"
 
         # SEP-21: Merge Watering Attributes
         # Now we can safely call the method from the mixin

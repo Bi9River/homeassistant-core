@@ -43,7 +43,6 @@ async def async_handle_greenhouse_service(hass: HomeAssistant, call):
     _LOGGER.info("Greenhouse service called with mode: %s", mode)
 
     # Use Entity Registry to find the runtime object (Duck Typing Pattern)
-    # We use hass.data directly as we did for watering
     for entity_id in target_entities:
         # 1. Verify entity exists
         if not hass.states.get(entity_id):
@@ -69,22 +68,26 @@ async def async_handle_greenhouse_service(hass: HomeAssistant, call):
             # Disable auto-schedule
             entity_object.clear_greenhouse_mode()
             _LOGGER.debug("Greenhouse automation disabled for %s", entity_id)
+            # We DO NOT call light.turn_on here, just clear the mode.
         else:
             # Enable auto-schedule and set specific mode
             entity_object.set_greenhouse_mode(mode)
 
-            # Also apply the physical light settings immediately
+            # Apply the physical light settings immediately
+            # This block ensures service_data is defined ONLY when needed
             scene_data = GREENHOUSE_SCENES[mode]
             service_data = {
                 "entity_id": entity_id,
                 "brightness": scene_data["brightness"],
-                "color_temp": scene_data["color_temp"],
+                "color_temp_kelvin": scene_data[
+                    "color_temp_kelvin"
+                ],  # Use kelvin as per warning
             }
+            # FIX: Indentation ensures this only runs if mode is NOT manual
             await hass.services.async_call(
                 "light", "turn_on", service_data, blocking=True
             )
             _LOGGER.debug("Greenhouse mode %s applied to %s", mode, entity_id)
-    await hass.services.async_call("light", "turn_on", service_data, blocking=True)
 
 
 # --- SMART WATERING LOGIC ---

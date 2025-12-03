@@ -83,7 +83,7 @@ SERVICE_SET_GREENHOUSE_SCENE = "set_greenhouse_scene"
 
 # SMART WATERING DEFINITIONS (SEP-14)
 CONF_WATERING_DURATION = "duration"
-DEFAULT_WATERING_DURATION = 10  # Minutes
+DEFAULT_WATERING_DURATION = 0.5  # Minutes (30 seconds)
 SERVICE_ACTIVATE_WATERING = "activate_watering"
 ATTR_NEXT_WATERING = "next_watering_time"
 ATTR_WATERING_ACTIVE = "watering_active"
