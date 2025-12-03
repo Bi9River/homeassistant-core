@@ -26,6 +26,9 @@ class GreenhousePanel extends LitElement {
     this._lightOn = false;
     this._greenhouseActive = false;
     this._greenhouseMode = "manual";
+    this._wateringEndTime = null;
+    this._wateringCountdownInterval = null;
+    this._wateringRemainingSeconds = 0;
 
     this._pendingLightToggle = false;
     this._pendingAutoToggle = false;
@@ -40,7 +43,12 @@ class GreenhousePanel extends LitElement {
 
       if (plugStateObj) {
         if (!this._pendingWaterActivate) {
-          this._waterActive = plugStateObj.attributes.watering_active === true;
+          const newWaterActive =
+            plugStateObj.attributes.watering_active === true;
+          if (this._waterActive && !newWaterActive) {
+            this._stopWateringCountdown();
+          }
+          this._waterActive = newWaterActive;
         }
       }
 
@@ -140,7 +148,9 @@ class GreenhousePanel extends LitElement {
                 ? "var(--primary-color)"
                 : "var(--secondary-text-color)"}; font-weight: 600;"
             >
-              ${this._waterActive ? "🌊 PUMPING ACTIVE" : "💤 Idle"}
+              ${this._waterActive
+                ? `🌊 PUMPING ACTIVE (${this._wateringRemainingSeconds}s)`
+                : "💤 Idle"}
             </span>
           </div>
           <div class="control-item">
@@ -286,7 +296,7 @@ class GreenhousePanel extends LitElement {
         </div>
         <div class="schedule-item">
           <div class="schedule-time">🌅 Daily at 07:00</div>
-          <div class="schedule-action">Automatic watering - 10 mins</div>
+          <div class="schedule-action">Automatic watering - 30s</div>
         </div>
       </div>
     `;
@@ -317,6 +327,7 @@ class GreenhousePanel extends LitElement {
   _handleManualWater() {
     this._waterActive = true;
     this._pendingWaterActivate = true;
+    this._startWateringCountdown(30);
 
     setTimeout(() => {
       this._pendingWaterActivate = false;
@@ -326,6 +337,39 @@ class GreenhousePanel extends LitElement {
     this.hass.callService("hue", "activate_watering", {
       entity_id: this.plugEntityId,
     });
+  }
+
+  _startWateringCountdown(seconds) {
+    if (this._wateringEndTime) {
+      this._wateringEndTime += seconds * 1000;
+    } else {
+      this._wateringEndTime = Date.now() + seconds * 1000;
+      this._wateringCountdownInterval = setInterval(() => {
+        this._updateWateringCountdown();
+      }, 1000);
+    }
+    this._updateWateringCountdown();
+  }
+
+  _updateWateringCountdown() {
+    const remaining = Math.max(
+      0,
+      Math.ceil((this._wateringEndTime - Date.now()) / 1000),
+    );
+    this._wateringRemainingSeconds = remaining;
+    this.requestUpdate();
+    if (remaining <= 0) {
+      this._stopWateringCountdown();
+    }
+  }
+
+  _stopWateringCountdown() {
+    if (this._wateringCountdownInterval) {
+      clearInterval(this._wateringCountdownInterval);
+      this._wateringCountdownInterval = null;
+    }
+    this._wateringRemainingSeconds = 0;
+    this._wateringEndTime = null;
   }
 
   _handleAutoLightToggle() {

@@ -47,6 +47,7 @@ class WateringPlugMixin(WateringPlugMixinBase):
         self._watering_active: bool = False
         self._watering_schedule_unsub: Callable[[], None] | None = None
         self._watering_auto_off_unsub: Callable[[], None] | None = None
+        self._watering_end_time: datetime.datetime | None = None
 
     async def async_added_to_hass(self) -> None:
         """Run when entity is added to register the scheduler."""
@@ -84,20 +85,23 @@ class WateringPlugMixin(WateringPlugMixinBase):
     async def async_start_watering(self) -> None:
         """Handle a request to start watering (Manual or Scheduled)."""
         self._watering_active = True
-
-        # SEP-21: State will update due to this call
         self.async_write_ha_state()
 
-        # 1. Turn on the physical plug (no flag needed)
         await self.async_turn_on()
 
-        # 2. Schedule the Auto-Off
-        self._cancel_auto_off_timer()
-        duration_min = DEFAULT_WATERING_DURATION
+        duration_seconds = DEFAULT_WATERING_DURATION * 60
+        now = dt_util.now()
 
+        if self._watering_end_time and self._watering_end_time > now:
+            self._watering_end_time += datetime.timedelta(seconds=duration_seconds)
+        else:
+            self._watering_end_time = now + datetime.timedelta(seconds=duration_seconds)
+
+        self._cancel_auto_off_timer()
+        delay = (self._watering_end_time - now).total_seconds()
         self._watering_auto_off_unsub = async_call_later(
             self.hass,
-            duration_min * 60,  # Convert to seconds
+            delay,
             self._async_watering_auto_off,
         )
 
@@ -105,9 +109,9 @@ class WateringPlugMixin(WateringPlugMixinBase):
     def _async_watering_auto_off(self, now: datetime.datetime) -> None:
         """Automatically turn off the plug after the duration."""
         self._watering_active = False
+        self._watering_end_time = None
         self._cancel_auto_off_timer()
 
-        # Turn off the physical device
         self.hass.async_create_task(self.async_turn_off())
         self.async_write_ha_state()
 
