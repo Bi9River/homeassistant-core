@@ -142,15 +142,10 @@ class HueLight(WateringPlugMixin, GreenhouseLightMixin, HueBaseEntity, LightEnti
     async def async_added_to_hass(self) -> None:
         """Handle entity which will be added."""
         await super().async_added_to_hass()
-        # Register schedulers for both features
-        await GreenhouseLightMixin.async_added_to_hass(self)
-        await WateringPlugMixin.async_added_to_hass(self)
 
     async def async_will_remove_from_hass(self) -> None:
         """Handle entity which will be removed."""
         await super().async_will_remove_from_hass()
-        await GreenhouseLightMixin.async_will_remove_from_hass(self)
-        await WateringPlugMixin.async_will_remove_from_hass(self)
 
     @property
     def brightness(self) -> int | None:

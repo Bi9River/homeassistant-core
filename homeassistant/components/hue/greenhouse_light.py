@@ -31,6 +31,12 @@ if TYPE_CHECKING:
         async def async_turn_on(self, **kwargs: Any) -> None:
             """Turn the light on."""
 
+        async def async_added_to_hass(self) -> None:
+            """Run when entity is added."""
+
+        async def async_will_remove_from_hass(self) -> None:
+            """Run when entity will be removed."""
+
 else:
 
     class GreenhouseLightMixinBase:
@@ -48,6 +54,7 @@ class GreenhouseLightMixin(GreenhouseLightMixinBase):
 
     async def async_added_to_hass(self) -> None:
         """Run when entity is added to register the scheduler."""
+        await super().async_added_to_hass()
         # Hook into the Home Assistant event loop
         if self.hass:
             self._greenhouse_unsub = async_track_time_change(
@@ -56,6 +63,7 @@ class GreenhouseLightMixin(GreenhouseLightMixinBase):
 
     async def async_will_remove_from_hass(self) -> None:
         """Clean up listeners when entity is removed."""
+        await super().async_will_remove_from_hass()
         if self._greenhouse_unsub:
             self._greenhouse_unsub()
             self._greenhouse_unsub = None

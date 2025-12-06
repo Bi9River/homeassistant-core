@@ -33,6 +33,12 @@ if TYPE_CHECKING:
         async def async_turn_off(self, **kwargs: Any) -> None:
             """Turn the switch off."""
 
+        async def async_added_to_hass(self) -> None:
+            """Run when entity is added."""
+
+        async def async_will_remove_from_hass(self) -> None:
+            """Run when entity will be removed."""
+
 else:
 
     class WateringPlugMixinBase:
@@ -51,6 +57,8 @@ class WateringPlugMixin(WateringPlugMixinBase):
 
     async def async_added_to_hass(self) -> None:
         """Run when entity is added to register the scheduler."""
+        await super().async_added_to_hass()
+
         # SEP-17: Register daily schedule at 07:00 AM
         if self.hass:
             self._watering_schedule_unsub = async_track_time_change(
@@ -63,6 +71,7 @@ class WateringPlugMixin(WateringPlugMixinBase):
 
     async def async_will_remove_from_hass(self) -> None:
         """Clean up listeners when entity is removed."""
+        await super().async_will_remove_from_hass()
         if self._watering_schedule_unsub:
             self._watering_schedule_unsub()
             self._watering_schedule_unsub = None
