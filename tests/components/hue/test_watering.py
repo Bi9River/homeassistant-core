@@ -149,3 +149,120 @@ async def test_watering_logic_schedule(hass: HomeAssistant) -> None:
 
     # 2. Assert
     assert plug.is_on is True, "The schedule callback should have triggered watering"
+
+
+async def test_watering_consecutive_starts(hass: HomeAssistant) -> None:
+    """Test that starting watering multiple times extends the end time."""
+
+    class MockWateringPlug(WateringPlugMixin):
+        def __init__(self, hass: HomeAssistant) -> None:
+            self.hass = hass
+            self.is_on = False
+            super().__init__()
+
+        async def async_turn_on(self, **kwargs: Any) -> None:
+            self.is_on = True
+
+        async def async_turn_off(self, **kwargs: Any) -> None:
+            self.is_on = False
+
+        def async_write_ha_state(self) -> None:
+            pass
+
+    plug = MockWateringPlug(hass)
+
+    # 1. Start watering first time
+    await plug.async_start_watering()
+    first_end_time = plug._watering_end_time
+    assert first_end_time is not None
+
+    # 2. Fast forward 10 seconds and start watering again
+    future_10_sec = dt_util.now() + timedelta(seconds=10)
+    async_fire_time_changed(hass, future_10_sec)
+    await hass.async_block_till_done()
+
+    # 3. Start watering again while still active (should extend end time)
+    await plug.async_start_watering()
+    second_end_time = plug._watering_end_time
+
+    # The end time should be extended (later than first)
+    assert second_end_time > first_end_time
+    assert plug.is_on is True
+
+
+async def test_watering_extra_state_attributes(hass: HomeAssistant) -> None:
+    """Test that extra_state_attributes returns watering info."""
+
+    class MockWateringPlug(WateringPlugMixin):
+        def __init__(self, hass: HomeAssistant) -> None:
+            self.hass = hass
+            self.is_on = False
+            super().__init__()
+
+        async def async_turn_on(self, **kwargs: Any) -> None:
+            self.is_on = True
+
+        async def async_turn_off(self, **kwargs: Any) -> None:
+            self.is_on = False
+
+        def async_write_ha_state(self) -> None:
+            pass
+
+    plug = MockWateringPlug(hass)
+
+    # Test attributes before watering
+    attrs = plug.extra_state_attributes
+    assert attrs is not None
+    assert "watering_active" in attrs
+    assert "next_watering_time" in attrs
+    assert attrs["watering_active"] is False
+
+    # Start watering
+    await plug.async_start_watering()
+
+    # Test attributes during watering
+    attrs = plug.extra_state_attributes
+    assert attrs["watering_active"] is True
+
+
+async def test_watering_cleanup_on_remove(hass: HomeAssistant) -> None:
+    """Test that cleanup happens when entity is removed."""
+
+    class MockBase:
+        """Mock base class with async lifecycle methods."""
+
+        async def async_added_to_hass(self) -> None:
+            """Mock base async_added_to_hass."""
+
+        async def async_will_remove_from_hass(self) -> None:
+            """Mock base async_will_remove_from_hass."""
+
+    class MockWateringPlug(WateringPlugMixin, MockBase):
+        def __init__(self, hass: HomeAssistant) -> None:
+            self.hass = hass
+            self.is_on = False
+            WateringPlugMixin.__init__(self)
+
+        async def async_turn_on(self, **kwargs: Any) -> None:
+            self.is_on = True
+
+        async def async_turn_off(self, **kwargs: Any) -> None:
+            self.is_on = False
+
+        def async_write_ha_state(self) -> None:
+            pass
+
+    plug = MockWateringPlug(hass)
+
+    # Simulate adding to hass
+    await plug.async_added_to_hass()
+    assert plug._watering_schedule_unsub is not None
+
+    # Start watering to create auto-off timer
+    await plug.async_start_watering()
+    assert plug._watering_auto_off_unsub is not None
+
+    # Simulate removal
+    await plug.async_will_remove_from_hass()
+    assert plug._watering_schedule_unsub is None
+    assert plug._watering_auto_off_unsub is None

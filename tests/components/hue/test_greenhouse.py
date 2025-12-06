@@ -104,3 +104,147 @@ async def test_greenhouse_scheduler_logic(
     assert light._kwargs, "Light did not attempt to turn on"
     assert light._kwargs["brightness"] == 50
     assert light._kwargs["color_temp"] == 370
+
+
+async def test_greenhouse_set_and_clear_mode(hass: HomeAssistant) -> None:
+    """Test manually setting and clearing greenhouse mode."""
+
+    class MockHueLight(GreenhouseLightMixin):
+        def __init__(self, hass: HomeAssistant) -> None:
+            self.hass = hass
+            super().__init__()
+
+        async def async_turn_on(self, **kwargs: Any) -> None:
+            """Mock turn on."""
+
+        def async_write_ha_state(self) -> None:
+            """Mock write state."""
+
+    light = MockHueLight(hass)
+
+    # Test setting valid mode
+    light.set_greenhouse_mode("growth")
+    assert light._greenhouse_active is True
+    assert light._greenhouse_mode == "growth"
+
+    # Test setting another valid mode
+    light.set_greenhouse_mode("rest")
+    assert light._greenhouse_active is True
+    assert light._greenhouse_mode == "rest"
+
+    # Test setting invalid mode (should be ignored)
+    light.set_greenhouse_mode("invalid_mode")
+    assert light._greenhouse_mode == "rest"  # Should stay the same
+
+    # Test clearing mode
+    light.clear_greenhouse_mode()
+    assert light._greenhouse_active is False
+    assert light._greenhouse_mode is None
+
+
+async def test_greenhouse_schedule_inactive(hass: HomeAssistant) -> None:
+    """Test that scheduler does nothing when greenhouse mode is inactive."""
+
+    class MockHueLight(GreenhouseLightMixin):
+        def __init__(self, hass: HomeAssistant) -> None:
+            self.hass = hass
+            self._kwargs: dict[str, Any] | None = None
+            super().__init__()
+
+        async def async_turn_on(self, **kwargs: Any) -> None:
+            """Mock turn on to capture arguments."""
+            self._kwargs = kwargs
+
+        def async_write_ha_state(self) -> None:
+            """Mock write state."""
+
+    light = MockHueLight(hass)
+    light._greenhouse_active = False
+    light._greenhouse_mode = "growth"
+
+    # Fire the logic - should do nothing when inactive
+    future_time = dt_util.now().replace(hour=20, minute=0, second=0)
+    light._async_check_greenhouse_schedule(future_time)
+
+    # Mode should not change
+    assert light._greenhouse_mode == "growth"
+    assert light._kwargs is None  # Should not have called turn_on
+
+
+async def test_greenhouse_schedule_no_mode_change(hass: HomeAssistant) -> None:
+    """Test that scheduler does nothing when already in target mode."""
+
+    class MockHueLight(GreenhouseLightMixin):
+        def __init__(self, hass: HomeAssistant) -> None:
+            self.hass = hass
+            self._kwargs: dict[str, Any] | None = None
+            super().__init__()
+
+        async def async_turn_on(self, **kwargs: Any) -> None:
+            """Mock turn on to capture arguments."""
+            self._kwargs = kwargs
+
+        def async_write_ha_state(self) -> None:
+            """Mock write state."""
+
+    light = MockHueLight(hass)
+    light._greenhouse_active = True
+    light._greenhouse_mode = "rest"
+
+    # Fire the logic at night - should stay in rest mode
+    future_time = dt_util.now().replace(hour=20, minute=0, second=0)
+    light._async_check_greenhouse_schedule(future_time)
+
+    # Mode should not change, and turn_on should not be called
+    assert light._greenhouse_mode == "rest"
+    assert light._kwargs is None
+
+
+async def test_greenhouse_extra_state_attributes(hass: HomeAssistant) -> None:
+    """Test that extra_state_attributes returns empty dict."""
+
+    class MockHueLight(GreenhouseLightMixin):
+        def __init__(self, hass: HomeAssistant) -> None:
+            self.hass = hass
+            super().__init__()
+
+        def async_write_ha_state(self) -> None:
+            """Mock write state."""
+
+    light = MockHueLight(hass)
+    attrs = light.extra_state_attributes
+    assert attrs == {}
+
+
+async def test_greenhouse_cleanup_on_remove(hass: HomeAssistant) -> None:
+    """Test that cleanup happens when entity is removed."""
+
+    class MockBase:
+        """Mock base class with async lifecycle methods."""
+
+        async def async_added_to_hass(self) -> None:
+            """Mock base async_added_to_hass."""
+
+        async def async_will_remove_from_hass(self) -> None:
+            """Mock base async_will_remove_from_hass."""
+
+    class MockHueLight(GreenhouseLightMixin, MockBase):
+        def __init__(self, hass: HomeAssistant) -> None:
+            self.hass = hass
+            GreenhouseLightMixin.__init__(self)
+
+        async def async_turn_on(self, **kwargs: Any) -> None:
+            """Mock turn on."""
+
+        def async_write_ha_state(self) -> None:
+            """Mock write state."""
+
+    light = MockHueLight(hass)
+
+    # Simulate adding to hass
+    await light.async_added_to_hass()
+    assert light._greenhouse_unsub is not None
+
+    # Simulate removal
+    await light.async_will_remove_from_hass()
+    assert light._greenhouse_unsub is None
