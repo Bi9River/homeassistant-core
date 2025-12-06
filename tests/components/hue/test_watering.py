@@ -96,19 +96,22 @@ async def test_watering_logic_auto_off(hass: HomeAssistant) -> None:
     plug = MockWateringPlug(hass)
 
     # 1. Start Watering
-    await plug.async_start_watering()  # <--- UPDATED METHOD NAME
+    await plug.async_start_watering()
     assert plug.is_on is True, "Plug should turn on immediately"
     assert plug._watering_active is True
 
-    # 2. Fast forward time (e.g. 5 minutes) - Should still be ON
-    future_5_min = dt_util.now() + timedelta(minutes=5)
-    async_fire_time_changed(hass, future_5_min)
+    # 2. Fast forward time (e.g. 10 seconds) - Should still be ON
+    # DEFAULT_WATERING_DURATION = 0.5 minutes = 30 seconds
+    future_10_sec = dt_util.now() + timedelta(seconds=10)
+    async_fire_time_changed(hass, future_10_sec)
     await hass.async_block_till_done()
-    assert plug.is_on is True, "Plug should still be on after 5 mins"
+    assert plug.is_on is True, "Plug should still be on after 10 seconds"
 
-    # 3. Fast forward time past duration (Default 10 mins) - Should turn OFF
-    future_11_min = dt_util.now() + timedelta(minutes=DEFAULT_WATERING_DURATION + 1)
-    async_fire_time_changed(hass, future_11_min)
+    # 3. Fast forward time past duration (30 seconds + 1 second) - Should turn OFF
+    # Convert DEFAULT_WATERING_DURATION from minutes to seconds
+    duration_seconds = int(DEFAULT_WATERING_DURATION * 60)
+    future_31_sec = dt_util.now() + timedelta(seconds=duration_seconds + 1)
+    async_fire_time_changed(hass, future_31_sec)
     await hass.async_block_till_done()
 
     assert plug.is_on is False, "Plug should turn off after duration"
