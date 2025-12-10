@@ -38,6 +38,11 @@ from .services import async_setup_services
 
 _LOGGER = logging.getLogger(__name__)
 
+# Error message constants to avoid duplication
+ERROR_ENTITY_NOT_FOUND = "Entity %s not found in state machine"
+ERROR_COMPONENT_NOT_LOADED = "Component for domain '%s' not loaded"
+ERROR_NO_RUNTIME_OBJECT = "Could not get runtime entity object for %s"
+
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 # --- GREENHOUSE LOGIC ---
@@ -127,7 +132,7 @@ async def async_handle_watering_service(hass: HomeAssistant, call):
     for entity_id in target_entities:
         # 1. Verify entity exists
         if not hass.states.get(entity_id):
-            _LOGGER.warning("Entity %s not found in state machine", entity_id)
+            _LOGGER.warning(ERROR_ENTITY_NOT_FOUND, entity_id)
             continue
 
         # 2. Get domain
@@ -138,14 +143,14 @@ async def async_handle_watering_service(hass: HomeAssistant, call):
         component = hass.data.get(domain)
 
         if not component or not hasattr(component, "get_entity"):
-            _LOGGER.warning("Component for domain '%s' not loaded", domain)
+            _LOGGER.warning(ERROR_COMPONENT_NOT_LOADED, domain)
             continue
 
         # 4. Get runtime entity object
         entity_object = component.get_entity(entity_id)
 
         if not entity_object:
-            _LOGGER.warning("Could not get runtime entity object for %s", entity_id)
+            _LOGGER.warning(ERROR_NO_RUNTIME_OBJECT, entity_id)
             continue
 
         # 5. Duck Typing Check
@@ -194,7 +199,7 @@ async def async_handle_watering_schedule_service(hass: HomeAssistant, call):
     for entity_id in target_entities:
         # 1. Verify entity exists
         if not hass.states.get(entity_id):
-            _LOGGER.warning("Entity %s not found in state machine", entity_id)
+            _LOGGER.warning(ERROR_ENTITY_NOT_FOUND, entity_id)
             continue
 
         # 2. Get domain and component
@@ -202,14 +207,14 @@ async def async_handle_watering_schedule_service(hass: HomeAssistant, call):
         component = hass.data.get(domain)
 
         if not component or not hasattr(component, "get_entity"):
-            _LOGGER.warning("Component for domain '%s' not loaded", domain)
+            _LOGGER.warning(ERROR_COMPONENT_NOT_LOADED, domain)
             continue
 
         # 3. Get runtime entity object
         entity_object = component.get_entity(entity_id)
 
         if not entity_object:
-            _LOGGER.warning("Could not get runtime entity object for %s", entity_id)
+            _LOGGER.warning(ERROR_NO_RUNTIME_OBJECT, entity_id)
             continue
 
         # 4. Duck Typing Check
@@ -265,7 +270,7 @@ async def async_handle_greenhouse_schedule_service(hass: HomeAssistant, call):
     for entity_id in target_entities:
         # 1. Verify entity exists
         if not hass.states.get(entity_id):
-            _LOGGER.warning("Entity %s not found in state machine", entity_id)
+            _LOGGER.warning(ERROR_ENTITY_NOT_FOUND, entity_id)
             continue
 
         # 2. Get domain and component
@@ -273,14 +278,14 @@ async def async_handle_greenhouse_schedule_service(hass: HomeAssistant, call):
         component = hass.data.get(domain)
 
         if not component or not hasattr(component, "get_entity"):
-            _LOGGER.warning("Component for domain '%s' not loaded", domain)
+            _LOGGER.warning(ERROR_COMPONENT_NOT_LOADED, domain)
             continue
 
         # 3. Get runtime entity object
         entity_object = component.get_entity(entity_id)
 
         if not entity_object:
-            _LOGGER.warning("Could not get runtime entity object for %s", entity_id)
+            _LOGGER.warning(ERROR_NO_RUNTIME_OBJECT, entity_id)
             continue
 
         # 4. Duck Typing Check

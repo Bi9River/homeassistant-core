@@ -67,63 +67,91 @@ class GreenhousePanel extends LitElement {
 
   willUpdate(changedProperties) {
     if (changedProperties.has("hass") && this.hass) {
-      const plugStateObj = this.hass.states[this.plugEntityId];
-      const lightStateObj = this.hass.states[this.lightEntityId];
-
-      if (plugStateObj) {
-        if (!this._pendingWaterActivate) {
-          const newWaterActive =
-            plugStateObj.attributes.watering_active === true;
-          if (this._waterActive && !newWaterActive) {
-            this._stopWateringCountdown();
-          }
-          this._waterActive = newWaterActive;
-        }
-
-        // Sync watering schedule from backend
-        const backendHour = plugStateObj.attributes.watering_hour;
-        const backendMinute = plugStateObj.attributes.watering_minute;
-        if (backendHour !== undefined && backendMinute !== undefined) {
-          this.wateringSchedule = {
-            time: `${String(backendHour).padStart(2, "0")}:${String(
-              backendMinute,
-            ).padStart(2, "0")}`,
-            hour: backendHour,
-            minute: backendMinute,
-            duration: 30,
-          };
-        }
-      }
-
-      if (lightStateObj) {
-        if (
-          !this._pendingLightToggle &&
-          !this._pendingAutoToggle &&
-          !this._pendingSceneChange
-        ) {
-          this._lightOn = lightStateObj.state === "on";
-        }
-
-        if (!this._pendingAutoToggle && !this._pendingSceneChange) {
-          this._greenhouseActive =
-            lightStateObj.attributes.greenhouse_active === true;
-          this._greenhouseMode =
-            lightStateObj.attributes.greenhouse_mode || "manual";
-        }
-
-        // Sync greenhouse schedule from backend
-        const backendGrowthHour = lightStateObj.attributes.growth_hour;
-        const backendRestHour = lightStateObj.attributes.rest_hour;
-        if (backendGrowthHour !== undefined && backendRestHour !== undefined) {
-          this.greenhouseSchedule = {
-            growthTime: `${String(backendGrowthHour).padStart(2, "0")}:00`,
-            restTime: `${String(backendRestHour).padStart(2, "0")}:00`,
-            growthHour: backendGrowthHour,
-            restHour: backendRestHour,
-          };
-        }
-      }
+      this._syncWateringState();
+      this._syncLightingState();
     }
+  }
+
+  _syncWateringState() {
+    const plugStateObj = this.hass.states[this.plugEntityId];
+    if (!plugStateObj) return;
+
+    // Sync watering active status
+    if (!this._pendingWaterActivate) {
+      const newWaterActive = plugStateObj.attributes.watering_active === true;
+      if (this._waterActive && !newWaterActive) {
+        this._stopWateringCountdown();
+      }
+      this._waterActive = newWaterActive;
+    }
+
+    // Sync watering schedule from backend
+    this._syncWateringSchedule(plugStateObj);
+  }
+
+  _syncWateringSchedule(plugStateObj) {
+    const backendHour = plugStateObj.attributes.watering_hour;
+    const backendMinute = plugStateObj.attributes.watering_minute;
+
+    if (backendHour === undefined || backendMinute === undefined) return;
+
+    this.wateringSchedule = {
+      time: `${String(backendHour).padStart(2, "0")}:${String(
+        backendMinute,
+      ).padStart(2, "0")}`,
+      hour: backendHour,
+      minute: backendMinute,
+      duration: 30,
+    };
+  }
+
+  _syncLightingState() {
+    const lightStateObj = this.hass.states[this.lightEntityId];
+    if (!lightStateObj) return;
+
+    // Sync light on/off status
+    this._syncLightPowerState(lightStateObj);
+
+    // Sync greenhouse active and mode
+    this._syncGreenhouseMode(lightStateObj);
+
+    // Sync greenhouse schedule from backend
+    this._syncGreenhouseSchedule(lightStateObj);
+  }
+
+  _syncLightPowerState(lightStateObj) {
+    if (
+      this._pendingLightToggle ||
+      this._pendingAutoToggle ||
+      this._pendingSceneChange
+    ) {
+      return;
+    }
+    this._lightOn = lightStateObj.state === "on";
+  }
+
+  _syncGreenhouseMode(lightStateObj) {
+    if (this._pendingAutoToggle || this._pendingSceneChange) {
+      return;
+    }
+    this._greenhouseActive =
+      lightStateObj.attributes.greenhouse_active === true;
+    this._greenhouseMode = lightStateObj.attributes.greenhouse_mode || "manual";
+  }
+
+  _syncGreenhouseSchedule(lightStateObj) {
+    const backendGrowthHour = lightStateObj.attributes.growth_hour;
+    const backendRestHour = lightStateObj.attributes.rest_hour;
+
+    if (backendGrowthHour === undefined || backendRestHour === undefined)
+      return;
+
+    this.greenhouseSchedule = {
+      growthTime: `${String(backendGrowthHour).padStart(2, "0")}:00`,
+      restTime: `${String(backendRestHour).padStart(2, "0")}:00`,
+      growthHour: backendGrowthHour,
+      restHour: backendRestHour,
+    };
   }
 
   render() {
@@ -693,7 +721,6 @@ class GreenhousePanel extends LitElement {
             ${this.greenhouseSchedule.growthTime}
           </div>
           <div class="schedule-action">Cool daylight (6500K), 100%</div>
-          <ha-icon icon="mdi:pencil" class="edit-icon"></ha-icon>
         </div>
         <div
           class="schedule-item"
@@ -704,7 +731,6 @@ class GreenhousePanel extends LitElement {
             ${this.greenhouseSchedule.restTime}
           </div>
           <div class="schedule-action">Warm white (2700K), 20%</div>
-          <ha-icon icon="mdi:pencil" class="edit-icon"></ha-icon>
         </div>
       </div>
     `;
@@ -730,7 +756,6 @@ class GreenhousePanel extends LitElement {
             Morning watering - ${this.wateringSchedule.duration} seconds
             duration
           </div>
-          <ha-icon icon="mdi:pencil" class="edit-icon"></ha-icon>
         </div>
       </div>
     `;

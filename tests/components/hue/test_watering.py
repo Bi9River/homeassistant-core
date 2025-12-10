@@ -93,7 +93,7 @@ async def test_watering_logic_auto_off(hass: HomeAssistant) -> None:
             self.is_on = False
 
         def async_write_ha_state(self) -> None:
-            pass
+            """Mock write state - intentionally empty for testing."""
 
     plug = MockWateringPlug(hass)
 
@@ -136,7 +136,7 @@ async def test_watering_logic_schedule(hass: HomeAssistant) -> None:
             self.is_on = False
 
         def async_write_ha_state(self) -> None:
-            pass
+            """Mock write state - intentionally empty for testing."""
 
     plug = MockWateringPlug(hass)
 
@@ -169,7 +169,7 @@ async def test_watering_consecutive_starts(hass: HomeAssistant) -> None:
             self.is_on = False
 
         def async_write_ha_state(self) -> None:
-            pass
+            """Mock write state - intentionally empty for testing."""
 
     plug = MockWateringPlug(hass)
 
@@ -208,7 +208,7 @@ async def test_watering_extra_state_attributes(hass: HomeAssistant) -> None:
             self.is_on = False
 
         def async_write_ha_state(self) -> None:
-            pass
+            """Mock write state - intentionally empty for testing."""
 
     plug = MockWateringPlug(hass)
 
@@ -252,7 +252,7 @@ async def test_watering_cleanup_on_remove(hass: HomeAssistant) -> None:
             self.is_on = False
 
         def async_write_ha_state(self) -> None:
-            pass
+            """Mock write state - intentionally empty for testing."""
 
     plug = MockWateringPlug(hass)
 
@@ -286,7 +286,7 @@ async def test_watering_update_schedule(hass: HomeAssistant) -> None:
             self.is_on = False
 
         def async_write_ha_state(self) -> None:
-            pass
+            """Mock write state - intentionally empty for testing."""
 
     plug = MockWateringPlug(hass)
 
@@ -337,7 +337,7 @@ async def test_watering_schedule_re_registration(hass: HomeAssistant) -> None:
             self.is_on = False
 
         def async_write_ha_state(self) -> None:
-            pass
+            """Mock write state - intentionally empty for testing."""
 
     plug = MockWateringPlug(hass)
 
@@ -371,7 +371,7 @@ async def test_watering_next_run_calculation(hass: HomeAssistant) -> None:
             self.is_on = False
 
         def async_write_ha_state(self) -> None:
-            pass
+            """Mock write state - intentionally empty for testing."""
 
     plug = MockWateringPlug(hass)
 
