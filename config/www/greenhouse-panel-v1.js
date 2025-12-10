@@ -154,7 +154,10 @@ class GreenhousePanel extends LitElement {
     return html`
       <div class="header">
         <h1>
-          <span>🌱</span>
+          <ha-icon
+            icon="mdi:sprout"
+            style="width: 32px; height: 32px;"
+          ></ha-icon>
           <span>Greenhouse Control Panel</span>
         </h1>
         <p class="header-subtitle">Smart Plant Care Automation System</p>
@@ -164,10 +167,11 @@ class GreenhousePanel extends LitElement {
             <span>System Connected</span>
           </div>
           <div class="status-item">
-            <span>
+            <span style="display: flex; align-items: center; gap: 4px;">
               ${this._greenhouseActive
-                ? "🌞 Auto Light Control"
-                : "⚙️ Manual Light Control"}
+                ? html`<ha-icon icon="mdi:autorenew"></ha-icon> Auto Light
+                    Control`
+                : html`<ha-icon icon="mdi:cog"></ha-icon> Manual Light Control`}
             </span>
           </div>
         </div>
@@ -194,7 +198,7 @@ class GreenhousePanel extends LitElement {
       <div class="card">
         <div class="card-header">
           <div class="card-title">
-            <span class="icon">💧</span>
+            <ha-icon icon="mdi:water-outline" class="icon"></ha-icon>
             <span>Smart Watering Control</span>
           </div>
         </div>
@@ -208,8 +212,9 @@ class GreenhousePanel extends LitElement {
                 : "var(--secondary-text-color)"}; font-weight: 600;"
             >
               ${this._waterActive
-                ? `🌊 PUMPING ACTIVE (${this._wateringRemainingSeconds}s)`
-                : "💤 Idle"}
+                ? html`<ha-icon icon="mdi:water"></ha-icon> PUMPING ACTIVE
+                    (${this._wateringRemainingSeconds}s)`
+                : html`<ha-icon icon="mdi:sleep"></ha-icon> Idle`}
             </span>
           </div>
           <div class="control-item">
@@ -221,7 +226,9 @@ class GreenhousePanel extends LitElement {
         </div>
 
         <button class="button" @click=${this._handleManualWater}>
-          ${this._waterActive ? "🔄 Continue 30s" : "⚡ Manual Water (30s)"}
+          ${this._waterActive
+            ? html`<ha-icon icon="mdi:autorenew"></ha-icon> Continue 30s`
+            : html`<ha-icon icon="mdi:flash"></ha-icon> Manual Water (30s)`}
         </button>
       </div>
     `;
@@ -233,23 +240,25 @@ class GreenhousePanel extends LitElement {
     // If auto mode is active, show the current auto mode
     if (this._greenhouseActive) {
       if (this._greenhouseMode === "growth") {
-        modeDisplay = "🌞 Growth Mode";
+        modeDisplay = html`<ha-icon icon="mdi:weather-sunny"></ha-icon> Growth
+          Mode`;
       } else if (this._greenhouseMode === "rest") {
-        modeDisplay = "🌙 Rest Mode";
+        modeDisplay = html`<ha-icon icon="mdi:weather-night"></ha-icon> Rest
+          Mode`;
       } else {
         // Fallback during transition
-        modeDisplay = "🔄 Auto Mode";
+        modeDisplay = html`<ha-icon icon="mdi:autorenew"></ha-icon> Auto Mode`;
       }
     } else {
       // Manual mode
-      modeDisplay = "⚙️ Manual Mode";
+      modeDisplay = html`<ha-icon icon="mdi:cog"></ha-icon> Manual Mode`;
     }
 
     return html`
       <div class="card">
         <div class="card-header">
           <div class="card-title">
-            <span class="icon">💡</span>
+            <ha-icon icon="mdi:lightbulb" class="icon"></ha-icon>
             <span>Smart Lighting Control</span>
           </div>
         </div>
@@ -279,7 +288,9 @@ class GreenhousePanel extends LitElement {
                 ? "var(--success-color)"
                 : "var(--disabled-text-color)"}; font-weight: 600;"
             >
-              ${this._lightOn ? "✓ ON" : "○ OFF"}
+              ${this._lightOn
+                ? html`<ha-icon icon="mdi:check"></ha-icon> ON`
+                : html`<ha-icon icon="mdi:circle-outline"></ha-icon> OFF`}
             </span>
           </div>
 
@@ -298,7 +309,9 @@ class GreenhousePanel extends LitElement {
           @click=${this._handleManualLightToggle}
           style="margin-top: 12px;"
         >
-          ${this._lightOn ? "💡 Turn Off Light" : "💡 Turn On Light"}
+          ${this._lightOn
+            ? html`<ha-icon icon="mdi:lightbulb-off"></ha-icon> Turn Off Light`
+            : html`<ha-icon icon="mdi:lightbulb-on"></ha-icon> Turn On Light`}
         </button>
 
         <!-- Scene Buttons -->
@@ -315,13 +328,13 @@ class GreenhousePanel extends LitElement {
               : "secondary"}"
             @click=${() => this._handleSceneClick("growth")}
           >
-            🌞 Growth
+            <ha-icon icon="mdi:weather-sunny"></ha-icon> Growth
           </button>
           <button
             class="button ${this._greenhouseMode === "rest" ? "" : "secondary"}"
             @click=${() => this._handleSceneClick("rest")}
           >
-            🌙 Rest
+            <ha-icon icon="mdi:weather-night"></ha-icon> Rest
           </button>
         </div>
       </div>
@@ -333,32 +346,32 @@ class GreenhousePanel extends LitElement {
     // Preset questions for quick AI consultation
     const presetQuestions = [
       {
-        icon: "🌱",
+        icon: "mdi:sprout",
         question: "How can I optimize plant growth?",
         category: "Growth",
       },
       {
-        icon: "💧",
+        icon: "mdi:water-percent",
         question: "Is my humidity level appropriate?",
         category: "Environment",
       },
       {
-        icon: "🌡️",
+        icon: "mdi:thermometer",
         question: "Should I adjust the temperature?",
         category: "Environment",
       },
       {
-        icon: "💡",
+        icon: "mdi:lightbulb",
         question: "Is my lighting setup optimal?",
         category: "Lighting",
       },
       {
-        icon: "🐛",
+        icon: "mdi:bug",
         question: "How to prevent common plant diseases?",
         category: "Health",
       },
       {
-        icon: "⏰",
+        icon: "mdi:clock-outline",
         question: "What's the best watering schedule?",
         category: "Care",
       },
@@ -368,7 +381,7 @@ class GreenhousePanel extends LitElement {
       <div class="card">
         <div class="card-header">
           <div class="card-title">
-            <span class="icon">🤖</span>
+            <ha-icon icon="mdi:robot" class="icon"></ha-icon>
             <span>AI Analysis System</span>
           </div>
           <button
@@ -376,9 +389,11 @@ class GreenhousePanel extends LitElement {
             @click=${this._togglePresetQuestions}
             title="Quick Questions"
           >
-            <span class="btn-icon"
-              >${this._showPresetQuestions ? "✕" : "💬"}</span
-            >
+            <span class="btn-icon">
+              ${this._showPresetQuestions
+                ? html`<ha-icon icon="mdi:close"></ha-icon>`
+                : html`<ha-icon icon="mdi:chat"></ha-icon>`}
+            </span>
             <span class="btn-text"
               >${this._showPresetQuestions ? "Close" : "Quick Questions"}</span
             >
@@ -395,19 +410,19 @@ class GreenhousePanel extends LitElement {
             style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: var(--primary-text-color);"
           >
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span>🌡️</span>
+              <ha-icon icon="mdi:thermometer"></ha-icon>
               <span style="color: var(--secondary-text-color);"
                 >Temperature:</span
               >
               <strong>${this._simTemp}°C</strong>
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span>💧</span>
+              <ha-icon icon="mdi:water-percent"></ha-icon>
               <span style="color: var(--secondary-text-color);">Humidity:</span>
               <strong>${this._simHumidity}%</strong>
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span>💡</span>
+              <ha-icon icon="mdi:lightbulb"></ha-icon>
               <span style="color: var(--secondary-text-color);">Light:</span>
               <strong
                 >${this._greenhouseMode === "growth"
@@ -423,7 +438,7 @@ class GreenhousePanel extends LitElement {
           ? html`
               <div class="preset-questions-panel">
                 <div class="preset-questions-header">
-                  <span>💬</span>
+                  <ha-icon icon="mdi:chat"></ha-icon>
                   <span>Quick Questions</span>
                 </div>
                 <div class="preset-questions-grid">
@@ -434,7 +449,10 @@ class GreenhousePanel extends LitElement {
                         @click=${() => this._askPresetQuestion(q.question)}
                         ?disabled=${this._aiLoading}
                       >
-                        <span class="question-icon">${q.icon}</span>
+                        <ha-icon
+                          icon="${q.icon}"
+                          class="question-icon"
+                        ></ha-icon>
                         <span class="question-text">${q.question}</span>
                       </button>
                     `,
@@ -447,7 +465,7 @@ class GreenhousePanel extends LitElement {
           ? html`
               <div class="ai-recommendation-box">
                 <div class="ai-recommendation-header">
-                  <span>🤖</span>
+                  <ha-icon icon="mdi:robot"></ha-icon>
                   <span>AI Recommendation:</span>
                 </div>
                 <div class="ai-recommendation-content">
@@ -464,8 +482,10 @@ class GreenhousePanel extends LitElement {
           style="margin-top: 12px;"
         >
           ${this._aiLoading
-            ? "⏳ Analyzing..."
-            : "🤖 Analyze Current Conditions"}
+            ? html`<ha-icon icon="mdi:loading" class="spin"></ha-icon>
+                Analyzing...`
+            : html`<ha-icon icon="mdi:robot"></ha-icon> Analyze Current
+                Conditions`}
         </button>
 
         ${this._aiAnalysis
@@ -475,7 +495,7 @@ class GreenhousePanel extends LitElement {
                 @click=${this._clearAIAnalysis}
                 style="margin-top: 8px;"
               >
-                🗑️ Clear Result
+                <ha-icon icon="mdi:delete"></ha-icon> Clear Result
               </button>
             `
           : ""}
@@ -538,7 +558,7 @@ class GreenhousePanel extends LitElement {
       <div class="card">
         <div class="card-header">
           <div class="card-title">
-            <span class="icon">🎛️</span>
+            <ha-icon icon="mdi:tune" class="icon"></ha-icon>
             <span>Sensor Mock System</span>
           </div>
         </div>
@@ -546,7 +566,10 @@ class GreenhousePanel extends LitElement {
         <!-- Temperature Slider -->
         <div class="slider-container">
           <div class="slider-header">
-            <span class="slider-label">🌡️ Simulated Temperature</span>
+            <span class="slider-label"
+              ><ha-icon icon="mdi:thermometer"></ha-icon> Simulated
+              Temperature</span
+            >
             <span class="slider-value">${this._simTemp.toFixed(1)}°C</span>
           </div>
           <input
@@ -567,7 +590,10 @@ class GreenhousePanel extends LitElement {
         <!-- Humidity Slider -->
         <div class="slider-container">
           <div class="slider-header">
-            <span class="slider-label">💧 Simulated Humidity</span>
+            <span class="slider-label"
+              ><ha-icon icon="mdi:water-percent"></ha-icon> Simulated
+              Humidity</span
+            >
             <span class="slider-value">${this._simHumidity}%</span>
           </div>
           <input
@@ -622,7 +648,9 @@ class GreenhousePanel extends LitElement {
 
         <div class="device-list">
           <div class="device-card ${this._waterActive ? "active" : ""}">
-            <div class="device-icon">🔌</div>
+            <div class="device-icon">
+              <ha-icon icon="mdi:power-plug"></ha-icon>
+            </div>
             <div class="device-name">Smart Plug</div>
             <div class="device-status">
               ${this._waterActive ? "Running" : "Off"}
@@ -630,7 +658,9 @@ class GreenhousePanel extends LitElement {
           </div>
 
           <div class="device-card ${this._lightOn ? "active" : ""}">
-            <div class="device-icon">💡</div>
+            <div class="device-icon">
+              <ha-icon icon="mdi:lightbulb"></ha-icon>
+            </div>
             <div class="device-name">Grow Light</div>
             <div class="device-status">${this._lightOn ? "On" : "Off"}</div>
           </div>
@@ -645,11 +675,14 @@ class GreenhousePanel extends LitElement {
       <div class="card">
         <div class="card-header">
           <div class="card-title">
-            <span class="icon">📅</span><span>Watering Schedule</span>
+            <ha-icon icon="mdi:calendar-clock" class="icon"></ha-icon
+            ><span>Watering Schedule</span>
           </div>
         </div>
         <div class="schedule-item">
-          <div class="schedule-time">🌅 Daily at 07:00</div>
+          <div class="schedule-time">
+            <ha-icon icon="mdi:weather-sunset-up"></ha-icon> Daily at 07:00
+          </div>
           <div class="schedule-action">Automatic watering - 30s</div>
         </div>
       </div>
@@ -662,7 +695,8 @@ class GreenhousePanel extends LitElement {
       <div class="card">
         <div class="card-header">
           <div class="card-title">
-            <span class="icon">📅</span><span>Lighting Schedule</span>
+            <ha-icon icon="mdi:calendar-clock" class="icon"></ha-icon
+            ><span>Lighting Schedule</span>
           </div>
         </div>
         <div
@@ -670,7 +704,8 @@ class GreenhousePanel extends LitElement {
           @click="${this._showGreenhouseScheduleDialog}"
         >
           <div class="schedule-time">
-            🌞 Growth starts at ${this.greenhouseSchedule.growthTime}
+            <ha-icon icon="mdi:weather-sunny"></ha-icon> Growth starts at
+            ${this.greenhouseSchedule.growthTime}
           </div>
           <div class="schedule-action">Cool daylight (6500K), 100%</div>
           <ha-icon icon="mdi:pencil" class="edit-icon"></ha-icon>
@@ -680,7 +715,8 @@ class GreenhousePanel extends LitElement {
           @click="${this._showGreenhouseScheduleDialog}"
         >
           <div class="schedule-time">
-            🌙 Rest starts at ${this.greenhouseSchedule.restTime}
+            <ha-icon icon="mdi:weather-night"></ha-icon> Rest starts at
+            ${this.greenhouseSchedule.restTime}
           </div>
           <div class="schedule-action">Warm white (2700K), 20%</div>
           <ha-icon icon="mdi:pencil" class="edit-icon"></ha-icon>
@@ -695,14 +731,15 @@ class GreenhousePanel extends LitElement {
       <div class="card">
         <div class="card-header">
           <div class="card-title">
-            <span class="icon">📅</span>
+            <ha-icon icon="mdi:calendar-clock" class="icon"></ha-icon>
             <span>Watering Schedule</span>
           </div>
         </div>
 
         <div class="schedule-item" @click="${this._showTimePickerDialog}">
           <div class="schedule-time">
-            ☀️ Daily at ${this.wateringSchedule.time}
+            <ha-icon icon="mdi:white-balance-sunny"></ha-icon> Daily at
+            ${this.wateringSchedule.time}
           </div>
           <div class="schedule-action">
             Morning watering - ${this.wateringSchedule.duration} seconds
@@ -783,7 +820,7 @@ class GreenhousePanel extends LitElement {
       <div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px;">
         <div style="display: flex; flex-direction: column; gap: 8px;">
           <label style="font-size: 14px; font-weight: 500; color: #333;">
-            🌞 Growth mode starts at:
+            ☀ Growth mode starts at:
           </label>
           <select id="growth-hour-select" style="
             padding: 12px;
@@ -800,7 +837,7 @@ class GreenhousePanel extends LitElement {
 
         <div style="display: flex; flex-direction: column; gap: 8px;">
           <label style="font-size: 14px; font-weight: 500; color: #333;">
-            🌙 Rest mode starts at:
+            ☽ Rest mode starts at:
           </label>
           <select id="rest-hour-select" style="
             padding: 12px;
@@ -1266,11 +1303,11 @@ Please provide a specific answer based on these current conditions. Keep the res
 
       if (error.message.includes("Invalid API key")) {
         this._aiAnalysis =
-          "⚠️ Authentication failed: Please check your API key in config.js";
+          "⚠ Authentication failed: Please check your API key in config.js";
       } else if (error.message.includes("Rate limit")) {
-        this._aiAnalysis = "⚠️ Rate limit exceeded: Please try again later.";
+        this._aiAnalysis = "⚠ Rate limit exceeded: Please try again later.";
       } else {
-        this._aiAnalysis = `⚠️ Error: ${error.message}`;
+        this._aiAnalysis = `⚠ Error: ${error.message}`;
       }
     } finally {
       this._aiLoading = false;
@@ -1305,17 +1342,17 @@ Please provide a specific answer based on these current conditions. Keep the res
       // Provide user-friendly error messages
       if (error.message.includes("Invalid API key")) {
         this._aiAnalysis =
-          "⚠️ Authentication failed: Please check your API key in config.js";
+          "⚠ Authentication failed: Please check your API key in config.js";
       } else if (error.message.includes("Rate limit")) {
-        this._aiAnalysis = "⚠️ Rate limit exceeded: Please try again later.";
+        this._aiAnalysis = "⚠ Rate limit exceeded: Please try again later.";
       } else if (
         error.message.includes("Failed to fetch") ||
         error.message.includes("NetworkError")
       ) {
         this._aiAnalysis =
-          "⚠️ Network error: Please check your internet connection and API configuration.";
+          "⚠ Network error: Please check your internet connection and API configuration.";
       } else {
-        this._aiAnalysis = `⚠️ Error: ${error.message}`;
+        this._aiAnalysis = `⚠ Error: ${error.message}`;
       }
     } finally {
       this._aiLoading = false;
@@ -1382,11 +1419,11 @@ Provide a helpful answer that ACCEPTS the current light mode as-is. Do NOT sugge
 
       if (error.message.includes("Invalid API key")) {
         this._aiAnalysis =
-          "⚠️ Authentication failed: Please check your API key in config.js";
+          "⚠ Authentication failed: Please check your API key in config.js";
       } else if (error.message.includes("Rate limit")) {
-        this._aiAnalysis = "⚠️ Rate limit exceeded: Please try again later.";
+        this._aiAnalysis = "⚠ Rate limit exceeded: Please try again later.";
       } else {
-        this._aiAnalysis = `⚠️ Error: ${error.message}`;
+        this._aiAnalysis = `⚠ Error: ${error.message}`;
       }
     } finally {
       this._aiLoading = false;
