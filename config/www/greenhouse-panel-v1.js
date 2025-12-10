@@ -519,7 +519,8 @@ class GreenhousePanel extends LitElement {
     processedText = processedText.replace(/_([^_]+)_/g, "<em>$1</em>");
 
     // Split by numbered points (1., 2., 3., etc.)
-    const parts = processedText.split(/(\d+\.\s)/);
+    // Limit to reasonable number lengths (1-3 digits) to prevent ReDoS
+    const parts = processedText.split(/(\d{1,3}\.\s)/);
     const formattedParts = [];
 
     for (let i = 0; i < parts.length; i++) {
@@ -527,7 +528,7 @@ class GreenhousePanel extends LitElement {
       if (!part) continue;
 
       // Check if it's a number marker
-      if (/^\d+\.\s*$/.test(part)) {
+      if (/^\d{1,3}\.\s*$/.test(part)) {
         // Get the next part (the content)
         if (i + 1 < parts.length) {
           const content = parts[i + 1].trim();
