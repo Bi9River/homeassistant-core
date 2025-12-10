@@ -1,38 +1,70 @@
 # Hue Home Greenhouse Control System
 
-A Home Assistant Core extension for automated indoor plant care, built on top of the Philips Hue integration.
+An extension of the Philips Hue integration in Home Assistant, adding greenhouse control features.
 
-This project extends the official Philips Hue integration by introducing a full greenhouse control system, including smart watering, growth lighting, environment simulation, a custom unified control panel, and an AI-based plant advisor.
+This project extends the official Philips Hue integration by introducing a greenhouse control system, including smart watering, growth lighting, environment simulation, a custom unified control panel, and an AI-based plant advisor.
 
-All backend and frontend code is already integrated into this repository, and running the Dev Container will automatically launch the full system with no additional setup required.
+All core component and frontend code is already integrated into this repository, and running the Dev Container will automatically launch the full system with no additional setup required.
+
+## Project Structure
+The project is based on a fork of Home Assistant Core, with all greenhouse-related core component logic and frontend UI integrated directly into the repository. Below is a simplified overview of the relevant structure:
+
+```
+homeassistant-core/
+│
+├── homeassistant/
+│   └── components/
+│       └── hue/
+│           ├── __init__.py               	   # Register greenhouse logic
+│           ├── const.py                  	   # Added greenhouse constants
+│           ├── greenhouse_light.py       	   # lighting mixin
+│           ├── watering_plug.py          	   # watering logic
+│           └── v2/
+│		    	└── light.py              	   # Extended HueLight entity to support greenhouse and watering mixins
+│
+├── tests/
+│	└── components/
+│       └── hue/
+│			├── test_greenhouse.py             # Lighting behavior tests
+│			└── test_watering.py               # Watering functionality tests
+│
+└── config/
+		├── configuration.yaml                 # Registers custom Greenhouse panel and loads UI resources
+        └── www/
+            ├── ai-assistant.js                # Frontend AI module
+			├── greenhouse-panel-v1.js         # Main Greenhouse UI panel
+			└── greenhouse-panel-styles.css    # UI styles
+```
+
+The core component extends the Philips Hue integration using mixins, while the frontend implements a custom panel based on LitElement. Both parts are fully integrated into the Dev Container environment and start automatically when the container launches.
 
 ## Features
 
 ### Smart Watering
-	•	Automatic watering schedules
-	•	Manual Water Now (runs pump for 30 seconds)
-	•	Real-time plug state updates
-	•	Next watering time shown on dashboard
+- Automatic watering schedules
+- Manual Water Now (runs pump for 30 seconds)
+- Real-time plug state updates
+- Next watering time shown on dashboard
 
 ### Smart Lighting Control
-	•	Growth Mode & Rest Mode
-	•	Automatic daily switching
-	•	Adjustable brightness & color temperature
-	•	Manual scene switching
+- Growth Mode & Rest Mode
+- Automatic daily switching
+- Adjustable brightness & color temperature
+- Manual scene switching
 
 ### Unified Greenhouse Control Panel
-	•	Watering status
-	•	Lighting status
-	•	Device overview
-	•	Environment data
-	•	Simulation controls
-	•	Integrated UI based on Web Components
+- Watering status
+- Lighting status
+- Device overview
+- Environment data
+- Simulation controls
+- Integrated UI based on Web Components
 
 ### AI Analysis System
-	•	Temperature / humidity / light evaluation
-	•	Growth condition optimization
-	•	Quick Q&A module for plant problems
-	•	Environment simulation mode for testing
+- Temperature / humidity / light evaluation
+- Growth condition optimization
+- Quick Q&A module for plant problems
+- Environment simulation mode for testing
 
 ## Installation & Setup
 
@@ -51,61 +83,31 @@ This project includes a fully configured Home Assistant Core Dev Container.
 ## Usage Guide
 
 ### Manual Watering
-	•	Activates pump for 30 seconds
-	•	State updates automatically
+- Activates pump for 30 seconds
+- State updates automatically
 
 ### Automatic Watering Schedule
-
-	•	Set schedules like 06:00 and 18:00, system will water automatically.
+- Set schedules like 06:00 and 18:00, system will water automatically.
 
 ### Lighting Control
 
 #### Growth Mode
-	•	6500K
-	•	100% brightness
+- 6500K
+- 100% brightness
 
 #### Rest Mode
-	•	2700K
-	•	20% brightness
+- 2700K
+- 20% brightness
 
 Set automatic mode scheduling or switch manually.
 
 ### AI Analysis
-	•	Click Analyze Current Conditions
-	•	Provides recommendations on light, water, humidity, and temperature
-	•	Quick questions:
-		•	“How do I optimize plant growth?”
-		•	“Is my humidity okay?”
-		•	“What lighting duration should I use?”
-
-## Project Structure
-The project is based on a fork of Home Assistant Core, with all greenhouse-related
-backend logic and frontend UI integrated directly into the repository. Below is a
-simplified overview of the relevant structure:
-
-```
-homeassistant-core/
-│
-├── homeassistant/
-│   └── components/
-│       └── hue/
-│           ├── greenhouse_light.py       # Lighting mixin logic
-│           ├── watering_plug.py          # Watering plug mixin logic
-│           ├── services.yaml             # Greenhouse services
-│           ├── light.py                  # Extended HueLight entity
-│           ├── bridge.py                 # Updated to support greenhouse behavior
-│           ├── ... (other Hue files)
-│
-└── homeassistant/
-    └── frontend/
-        └── www/
-            └── greenhouse-panel.js        # Custom Greenhouse UI pane
-```
-
-The backend extends the Philips Hue integration using mixins, while the frontend
-implements a custom panel based on LitElement. Both parts are fully integrated
-into the Dev Container environment and start automatically when the container launches.
-
+- Click Analyze Current Conditions
+- Provides recommendations on light, water, humidity, and temperature
+- Quick questions:
+	- “How do I optimize plant growth?”
+	- “Is my humidity okay?”
+	- “What lighting duration should I use?”
 
 ## Testing
 The system was tested using a combination of unit tests and manual validation.
@@ -118,7 +120,7 @@ The tests focus on:
 - Event listener registration
 - Basic time-dependent behavior (using mocked time)
 
-These tests ensure that the core automation logic behaves correctly.
+These tests ensure that the core component automation logic behaves correctly.
 
 ### Manual Validation
 We manually tested the full interaction flow through the UI, including:
@@ -128,7 +130,7 @@ We manually tested the full interaction flow through the UI, including:
 - AI assistant responses
 - Sensor simulation (temperature/humidity)
 
-This confirmed that the frontend and backend work together as expected.
+This confirmed that the frontend and core component work together as expected.
 
 ## Contributors
 This project was collaboratively developed by **Group 3**:
@@ -137,27 +139,15 @@ This project was collaboratively developed by **Group 3**:
 - **Yanqiu Mei** — Frontend UI implementation, AI assistant integration
 - **Zihan Kuang** — Aggregation logic, architectural documentation
 - **Wenkang Gong** — Frontend–core integration, CORS/communication fixes
-- **Shiqi Wu** — Core component development, integration of frontend and backend
+- **Shiqi Wu** — Core component development, integration of frontend and core
 
 ## License
 MIT License
 
 Copyright (c) 2025 Group 3
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
