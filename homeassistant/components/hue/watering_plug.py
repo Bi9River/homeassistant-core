@@ -1,0 +1,174 @@
+"""Mixin for Smart Watering features for Hue Plugs."""
+
+# pylint: disable=hass-enforce-class-module
+from __future__ import annotations
+
+from collections.abc import Callable
+import datetime
+from typing import TYPE_CHECKING, Any
+
+from homeassistant.core import callback
+from homeassistant.helpers.event import async_call_later, async_track_time_change
+from homeassistant.util import dt as dt_util
+
+from .const import ATTR_NEXT_WATERING, ATTR_WATERING_ACTIVE, DEFAULT_WATERING_DURATION
+
+# Default configuration: Water every day at 07:00 AM
+DEFAULT_WATERING_HOUR = 7
+DEFAULT_WATERING_MINUTE = 0
+
+if TYPE_CHECKING:
+
+    class WateringPlugMixinBase:
+        """Base class for type checking."""
+
+        hass: Any  # Using Any to avoid circular imports/complex typing logic
+
+        def async_write_ha_state(self) -> None:
+            """Write the state to the state machine."""
+
+        async def async_turn_on(self, **kwargs: Any) -> None:
+            """Turn the switch on."""
+
+        async def async_turn_off(self, **kwargs: Any) -> None:
+            """Turn the switch off."""
+
+        async def async_added_to_hass(self) -> None:
+            """Run when entity is added."""
+
+        async def async_will_remove_from_hass(self) -> None:
+            """Run when entity will be removed."""
+
+else:
+
+    class WateringPlugMixinBase:
+        """Runtime base class."""
+
+
+class WateringPlugMixin(WateringPlugMixinBase):
+    """Mixin to add smart watering capabilities to a Hue switch/plug."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize the mixin."""
+        self._watering_active: bool = False
+        self._watering_schedule_unsub: Callable[[], None] | None = None
+        self._watering_auto_off_unsub: Callable[[], None] | None = None
+        self._watering_end_time: datetime.datetime | None = None
+        self._watering_hour: int = DEFAULT_WATERING_HOUR
+        self._watering_minute: int = DEFAULT_WATERING_MINUTE
+
+    async def async_added_to_hass(self) -> None:
+        """Run when entity is added to register the scheduler."""
+        await super().async_added_to_hass()
+
+        # SEP-17: Register daily schedule
+        if self.hass:
+            self._register_watering_schedule()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Clean up listeners when entity is removed."""
+        await super().async_will_remove_from_hass()
+        if self._watering_schedule_unsub:
+            self._watering_schedule_unsub()
+            self._watering_schedule_unsub = None
+        self._cancel_auto_off_timer()
+
+    def _register_watering_schedule(self) -> None:
+        """Register the watering schedule with current hour/minute settings."""
+        if self._watering_schedule_unsub:
+            self._watering_schedule_unsub()
+            self._watering_schedule_unsub = None
+
+        self._watering_schedule_unsub = async_track_time_change(
+            self.hass,
+            self._async_check_watering_schedule,
+            hour=self._watering_hour,
+            minute=self._watering_minute,
+            second=0,
+        )
+
+    @callback
+    def update_watering_schedule(self, hour: int, minute: int) -> None:
+        """Update the watering schedule to a new time."""
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            return
+
+        self._watering_hour = hour
+        self._watering_minute = minute
+
+        # Re-register the schedule with new time
+        self._register_watering_schedule()
+        self.async_write_ha_state()
+
+    @callback
+    def _async_check_watering_schedule(
+        self, now: datetime.datetime | None = None
+    ) -> None:
+        """Check the time and trigger watering if scheduled."""
+        # Call the new method name
+        self.hass.async_create_task(self.async_start_watering())
+
+    def _cancel_auto_off_timer(self) -> None:
+        """Cancel the running auto-off timer if it exists."""
+        if self._watering_auto_off_unsub:
+            self._watering_auto_off_unsub()
+            self._watering_auto_off_unsub = None
+
+    async def async_start_watering(self) -> None:
+        """Handle a request to start watering (Manual or Scheduled)."""
+        self._watering_active = True
+        self.async_write_ha_state()
+
+        await self.async_turn_on()
+
+        duration_seconds = DEFAULT_WATERING_DURATION * 60
+        now = dt_util.now()
+
+        if self._watering_end_time and self._watering_end_time > now:
+            self._watering_end_time += datetime.timedelta(seconds=duration_seconds)
+        else:
+            self._watering_end_time = now + datetime.timedelta(seconds=duration_seconds)
+
+        self._cancel_auto_off_timer()
+        delay = (self._watering_end_time - now).total_seconds()
+        self._watering_auto_off_unsub = async_call_later(
+            self.hass,
+            delay,
+            self._async_watering_auto_off,
+        )
+
+    @callback
+    def _async_watering_auto_off(self, now: datetime.datetime) -> None:
+        """Automatically turn off the plug after the duration."""
+        self._watering_active = False
+        self._watering_end_time = None
+        self._cancel_auto_off_timer()
+
+        self.hass.async_create_task(self.async_turn_off())
+        self.async_write_ha_state()
+
+    def _get_watering_attributes(self) -> dict[str, Any]:
+        """Return watering specific attributes."""
+        # Calculate next run time for display
+        now = dt_util.now()
+        next_run = now.replace(
+            hour=self._watering_hour,
+            minute=self._watering_minute,
+            second=0,
+            microsecond=0,
+        )
+        if next_run <= now:
+            next_run += datetime.timedelta(days=1)
+
+        return {
+            ATTR_WATERING_ACTIVE: self._watering_active,
+            ATTR_NEXT_WATERING: next_run.isoformat(),
+            "watering_hour": self._watering_hour,
+            "watering_minute": self._watering_minute,
+            "watering_time": f"{self._watering_hour:02d}:{self._watering_minute:02d}",
+        }
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the optional state attributes."""
+        return self._get_watering_attributes()
