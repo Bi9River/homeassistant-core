@@ -1,37 +1,37 @@
 // ai-assistant.js
 // Simplified AI Assistant for Greenhouse Analysis
-// Only supports DeepSeek API
-
-import OpenAI from "https://cdn.jsdelivr.net/npm/openai@4.20.1/+esm";
-import config from "./API_KEY.js";
+// Uses Home Assistant backend proxy to avoid CORS issues
 
 class AIAssistant {
-  #client;
-  #model;
+  #hass;
 
-  constructor() {
-    // Initialize DeepSeek client
-    this.#client = new OpenAI({
-      baseURL: "https://api.deepseek.com",
-      apiKey: config.DEEPSEEK_API_KEY,
-      dangerouslyAllowBrowser: true,
-    });
-    this.#model = "deepseek-chat";
+  constructor(hass) {
+    // Store Home Assistant connection
+    this.#hass = hass;
   }
 
   /**
-   * Send a chat message and get a response
+   * Send a chat message and get a response via Home Assistant service
    * @param {string} content - The message content
-   * @param {Array} history - Optional conversation history
+   * @param {Array} history - Optional conversation history (not yet implemented)
    * @returns {Promise<string>} - The AI response
    */
   async chat(content, history = []) {
     try {
-      const result = await this.#client.chat.completions.create({
-        model: this.#model,
-        messages: [...history, { content, role: "user" }],
+      // Call Home Assistant service via WebSocket API to get response
+      const response = await this.#hass.callWS({
+        type: "call_service",
+        domain: "hue",
+        service: "ai_query",
+        service_data: {
+          prompt: content,
+          stream: false,
+        },
+        return_response: true,
       });
-      return result.choices[0].message.content;
+
+      // Return the response content
+      return response.response.response;
     } catch (error) {
       console.error("Chat error:", error);
       throw this.#parseError(error);
@@ -43,18 +43,14 @@ class AIAssistant {
    * @param {string} content - The message content
    * @param {Array} history - Optional conversation history
    * @yields {string} - Chunks of the AI response
+   * @note Streaming is not yet implemented, falls back to regular chat
    */
   async *chatStream(content, history = []) {
     try {
-      const result = await this.#client.chat.completions.create({
-        model: this.#model,
-        messages: [...history, { content, role: "user" }],
-        stream: true,
-      });
-
-      for await (const chunk of result) {
-        yield chunk.choices[0]?.delta?.content || "";
-      }
+      // Streaming via WebSocket is complex, for now fall back to regular chat
+      // and yield it as a single chunk
+      const result = await this.chat(content, history);
+      yield result;
     } catch (error) {
       console.error("Chat stream error:", error);
       throw this.#parseError(error);
@@ -62,11 +58,16 @@ class AIAssistant {
   }
 
   #parseError(error) {
-    if (error.status === 401) {
+    // Parse Home Assistant service errors
+    if (error.message?.includes("API key not configured")) {
+      return new Error(
+        "DeepSeek API key not configured. Please set DEEPSEEK_API_KEY in your environment or secrets.yaml",
+      );
+    } else if (error.message?.includes("401")) {
       return new Error("Authentication failed: Invalid API key");
-    } else if (error.status === 429) {
+    } else if (error.message?.includes("429")) {
       return new Error("Rate limit exceeded: Please try again later");
-    } else if (error.status === 500) {
+    } else if (error.message?.includes("500")) {
       return new Error("Server error: Please try again later");
     }
     return error;
@@ -79,10 +80,11 @@ class AIAssistant {
  * @param {number} conditions.temperature - Temperature in Celsius
  * @param {number} conditions.humidity - Humidity percentage
  * @param {string} conditions.lightMode - Light mode (growth/rest)
+ * @param {Object} conditions.hass - Home Assistant connection object
  * @returns {Promise<string>} - AI analysis and recommendations
  */
 export async function analyzeGreenhouseConditions(conditions) {
-  const { temperature, humidity, lightMode } = conditions;
+  const { temperature, humidity, lightMode, hass } = conditions;
 
   const lightModeDesc =
     lightMode === "growth"
@@ -112,7 +114,10 @@ Provide a brief assessment focusing on:
 Keep the response positive, constructive, and concise (2-3 sentences). NEVER mention changing light modes or color temperature.`;
 
   try {
-    const assistant = new AIAssistant();
+    if (!hass) {
+      throw new Error("Home Assistant connection not available");
+    }
+    const assistant = new AIAssistant(hass);
     const response = await assistant.chat(prompt);
     return response;
   } catch (error) {
@@ -128,7 +133,7 @@ Keep the response positive, constructive, and concise (2-3 sentences). NEVER men
  * @returns {Promise<void>}
  */
 export async function analyzeGreenhouseConditionsStream(conditions, onChunk) {
-  const { temperature, humidity, lightMode } = conditions;
+  const { temperature, humidity, lightMode, hass } = conditions;
 
   const lightModeDesc =
     lightMode === "growth"
@@ -158,7 +163,10 @@ Provide a brief assessment focusing on:
 Keep the response positive, constructive, and concise (2-3 sentences). NEVER mention changing light modes or color temperature.`;
 
   try {
-    const assistant = new AIAssistant();
+    if (!hass) {
+      throw new Error("Home Assistant connection not available");
+    }
+    const assistant = new AIAssistant(hass);
     let fullResponse = "";
 
     for await (const chunk of assistant.chatStream(prompt)) {

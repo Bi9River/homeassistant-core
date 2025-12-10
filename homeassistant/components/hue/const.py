@@ -84,6 +84,12 @@ SERVICE_SET_GREENHOUSE_SCHEDULE = "set_greenhouse_schedule"
 ATTR_GROWTH_HOUR = "growth_hour"
 ATTR_REST_HOUR = "rest_hour"
 
+# AI ASSISTANT DEFINITIONS
+SERVICE_AI_QUERY = "ai_query"
+ATTR_PROMPT = "prompt"
+ATTR_STREAM = "stream"
+CONF_DEEPSEEK_API_KEY = "deepseek_api_key"
+
 # SMART WATERING DEFINITIONS (SEP-14)
 CONF_WATERING_DURATION = "duration"
 DEFAULT_WATERING_DURATION = 0.5  # Minutes (30 seconds)

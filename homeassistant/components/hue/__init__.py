@@ -1,26 +1,34 @@
 """Support for the Philips Hue system."""
 
+import contextlib
 import logging
+import os
 
+from aiohttp import ClientError, ClientSession, ClientTimeout
 from aiohue.util import normalize_bridge_id
 import voluptuous as vol
 
 from homeassistant.components import persistent_notification
 from homeassistant.config_entries import SOURCE_IGNORE
 from homeassistant.const import ATTR_ENTITY_ID
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceResponse, SupportsResponse
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
 from .bridge import HueBridge, HueConfigEntry
 from .const import (
     ATTR_GROWTH_HOUR,
+    ATTR_PROMPT,
     ATTR_REST_HOUR,
+    ATTR_STREAM,
     ATTR_WATERING_HOUR,
     ATTR_WATERING_MINUTE,
+    CONF_DEEPSEEK_API_KEY,
     DOMAIN,
     GREENHOUSE_SCENES,
     SERVICE_ACTIVATE_WATERING,
+    SERVICE_AI_QUERY,
     SERVICE_SET_GREENHOUSE_SCENE,
     SERVICE_SET_GREENHOUSE_SCHEDULE,
     SERVICE_SET_WATERING_SCHEDULE,
@@ -298,8 +306,101 @@ async def async_handle_greenhouse_schedule_service(hass: HomeAssistant, call):
             )
 
 
+# --- AI ASSISTANT SERVICE ---
+AI_SERVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_PROMPT): cv.string,
+        vol.Optional(ATTR_STREAM, default=False): cv.boolean,
+    }
+)
+
+
+async def async_handle_ai_query_service(hass: HomeAssistant, call) -> ServiceResponse:
+    """Handle AI query service call (proxy to DeepSeek API)."""
+    prompt = call.data[ATTR_PROMPT]
+    stream = call.data.get(ATTR_STREAM, False)
+
+    # Get API key from hass.data (set during integration setup)
+    api_key = hass.data.get(DOMAIN, {}).get(CONF_DEEPSEEK_API_KEY)
+
+    if not api_key:
+        raise ServiceValidationError(
+            "DeepSeek API key not configured. "
+            "Please set DEEPSEEK_API_KEY in your secrets.yaml or environment variables."
+        )
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": "deepseek-chat",
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": stream,
+    }
+
+    _LOGGER.debug("Sending AI query to DeepSeek API")
+
+    try:
+        async with (
+            ClientSession() as session,
+            session.post(
+                "https://api.deepseek.com/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=ClientTimeout(total=30),
+            ) as response,
+        ):
+            if response.status != 200:
+                error_text = await response.text()
+                _LOGGER.error(
+                    "DeepSeek API error: %s - %s", response.status, error_text
+                )
+                raise ServiceValidationError(
+                    f"DeepSeek API returned error {response.status}: {error_text}"
+                )
+
+            result = await response.json()
+            _LOGGER.debug("AI query successful")
+
+            return {
+                "response": result["choices"][0]["message"]["content"],
+                "model": result.get("model", "deepseek-chat"),
+                "usage": result.get("usage", {}),
+            }
+
+    except ClientError as err:
+        _LOGGER.error("Failed to connect to DeepSeek API: %s", err)
+        raise HomeAssistantError(f"Failed to connect to DeepSeek API: {err}") from err
+
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up Hue integration."""
+
+    # Load DeepSeek API Key from environment or use hardcoded value for development
+    api_key: str | None = "sk-581d1459d5ef4a9d8df4aa412af31e74"
+
+    # Fallback to environment or secrets if not hardcoded
+    if not api_key:
+        api_key = os.environ.get("DEEPSEEK_API_KEY")
+    if not api_key:
+        # Try to get from secrets.yaml if available
+        with contextlib.suppress(Exception):
+            api_key = hass.data.get("secrets", {}).get("deepseek_api_key")
+
+    # Store API key in hass.data for use by AI service
+    if DOMAIN not in hass.data:
+        hass.data[DOMAIN] = {}
+    hass.data[DOMAIN][CONF_DEEPSEEK_API_KEY] = api_key
+
+    if api_key:
+        _LOGGER.info("DeepSeek API key configured, AI assistant available")
+    else:
+        _LOGGER.warning(
+            "DeepSeek API key not found. AI assistant will not work. "
+            "Set DEEPSEEK_API_KEY in environment or secrets.yaml"
+        )
 
     # 1. Setup existing Hue services
     async_setup_services(hass)
@@ -346,6 +447,18 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         SERVICE_SET_GREENHOUSE_SCHEDULE,
         _async_greenhouse_schedule_handler,
         schema=GREENHOUSE_SCHEDULE_SERVICE_SCHEMA,
+    )
+
+    # 6. Register AI Query Service (with response support)
+    async def _async_ai_query_handler(call):
+        return await async_handle_ai_query_service(hass, call)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_AI_QUERY,
+        _async_ai_query_handler,
+        schema=AI_SERVICE_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
     )
 
     return True

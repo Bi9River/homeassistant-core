@@ -165,11 +165,9 @@ class GreenhousePanel extends LitElement {
           </div>
           <div class="status-item">
             <span>
-              ${this._greenhouseMode === "growth"
-                ? "🌞 Growth Mode"
-                : this._greenhouseMode === "rest"
-                ? "🌙 Rest Mode"
-                : "⚙️ Manual Mode"}
+              ${this._greenhouseActive
+                ? "🌞 Auto Light Control"
+                : "⚙️ Manual Light Control"}
             </span>
           </div>
         </div>
@@ -231,8 +229,21 @@ class GreenhousePanel extends LitElement {
 
   _renderLightingCard() {
     let modeDisplay = "Manual Mode";
-    if (this._greenhouseMode === "growth") modeDisplay = "🌞 Growth Mode";
-    if (this._greenhouseMode === "rest") modeDisplay = "🌙 Rest Mode";
+
+    // If auto mode is active, show the current auto mode
+    if (this._greenhouseActive) {
+      if (this._greenhouseMode === "growth") {
+        modeDisplay = "🌞 Growth Mode";
+      } else if (this._greenhouseMode === "rest") {
+        modeDisplay = "🌙 Rest Mode";
+      } else {
+        // Fallback during transition
+        modeDisplay = "🔄 Auto Mode";
+      }
+    } else {
+      // Manual mode
+      modeDisplay = "⚙️ Manual Mode";
+    }
 
     return html`
       <div class="card">
@@ -1124,7 +1135,18 @@ class GreenhousePanel extends LitElement {
     if (newActive) {
       // Turning on auto mode - light will be turned on by backend
       this._lightOn = true;
-      // Don't set _greenhouseMode here, let backend determine based on time
+      // Predict mode based on current time and schedule
+      const now = new Date();
+      const currentHour = now.getHours();
+      const growthHour = this.greenhouseSchedule.growthHour;
+      const restHour = this.greenhouseSchedule.restHour;
+
+      // Determine if we're in growth or rest period
+      if (currentHour >= growthHour && currentHour < restHour) {
+        this._greenhouseMode = "growth";
+      } else {
+        this._greenhouseMode = "rest";
+      }
     } else {
       // Turning off auto mode
       this._greenhouseMode = "manual";
@@ -1218,7 +1240,7 @@ class GreenhousePanel extends LitElement {
 
       // Import the AI assistant function
       const { AIAssistant } = await import("./ai-assistant.js");
-      const assistant = new AIAssistant();
+      const assistant = new AIAssistant(this.hass);
 
       // Create context-aware prompt
       const contextPrompt = `Current greenhouse conditions:
@@ -1237,7 +1259,8 @@ Please provide a specific answer based on these current conditions. Keep the res
       const response = await assistant.chat(contextPrompt);
 
       console.log("AI Response:", response);
-      this._aiAnalysis = response;
+      // Display question at the top of the answer for context
+      this._aiAnalysis = `**Question:** ${question}\n - \n${response}`;
     } catch (error) {
       console.error("Preset question error:", error);
 
@@ -1266,11 +1289,12 @@ Please provide a specific answer based on these current conditions. Keep the res
         temperature: this._simTemp,
         humidity: this._simHumidity,
         lightMode: this._greenhouseMode,
+        hass: this.hass,
       };
 
       console.log("Sending AI request with conditions:", conditions);
 
-      // Use the imported AI assistant function (DeepSeek only)
+      // Use the imported AI assistant function (via Home Assistant backend)
       const response = await analyzeGreenhouseConditions(conditions);
 
       console.log("AI Response:", response);
@@ -1347,11 +1371,12 @@ Provide a helpful answer that ACCEPTS the current light mode as-is. Do NOT sugge
       console.log("Asking preset question:", question);
 
       // Use the AI assistant directly with custom prompt
-      const assistant = new AIAssistant();
+      const assistant = new AIAssistant(this.hass);
       const response = await assistant.chat(prompt);
 
       console.log("AI Response:", response);
-      this._aiAnalysis = response;
+      // Display question at the top of the answer for context
+      this._aiAnalysis = `**Question:** ${question}\n - \n${response}`;
     } catch (error) {
       console.error("Preset question error:", error);
 

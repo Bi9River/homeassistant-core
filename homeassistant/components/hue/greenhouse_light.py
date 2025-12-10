@@ -159,6 +159,8 @@ class GreenhouseLightMixin(GreenhouseLightMixinBase):
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return the optional state attributes."""
         return {
+            "greenhouse_active": self._greenhouse_active,
+            "greenhouse_mode": self._greenhouse_mode,
             "growth_hour": self._growth_hour,
             "rest_hour": self._rest_hour,
             "growth_time": f"{self._growth_hour:02d}:00",
