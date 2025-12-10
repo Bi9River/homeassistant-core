@@ -103,7 +103,7 @@ async def test_greenhouse_scheduler_logic(
     assert light._greenhouse_mode == "rest"
     assert light._kwargs, "Light did not attempt to turn on"
     assert light._kwargs["brightness"] == 50
-    assert light._kwargs["color_temp"] == 370
+    assert light._kwargs["color_temp_kelvin"] == 2700
 
 
 async def test_greenhouse_set_and_clear_mode(hass: HomeAssistant) -> None:
@@ -201,7 +201,7 @@ async def test_greenhouse_schedule_no_mode_change(hass: HomeAssistant) -> None:
 
 
 async def test_greenhouse_extra_state_attributes(hass: HomeAssistant) -> None:
-    """Test that extra_state_attributes returns empty dict."""
+    """Test that extra_state_attributes returns greenhouse schedule info."""
 
     class MockHueLight(GreenhouseLightMixin):
         def __init__(self, hass: HomeAssistant) -> None:
@@ -213,7 +213,23 @@ async def test_greenhouse_extra_state_attributes(hass: HomeAssistant) -> None:
 
     light = MockHueLight(hass)
     attrs = light.extra_state_attributes
-    assert attrs == {}
+
+    # Should contain greenhouse state and schedule information
+    assert attrs is not None
+    assert "greenhouse_active" in attrs
+    assert "greenhouse_mode" in attrs
+    assert "growth_hour" in attrs
+    assert "rest_hour" in attrs
+    assert "growth_time" in attrs
+    assert "rest_time" in attrs
+
+    # Verify default values
+    assert attrs["greenhouse_active"] is False
+    assert attrs["greenhouse_mode"] is None
+    assert attrs["growth_hour"] == 6
+    assert attrs["rest_hour"] == 18
+    assert attrs["growth_time"] == "06:00"
+    assert attrs["rest_time"] == "18:00"
 
 
 async def test_greenhouse_cleanup_on_remove(hass: HomeAssistant) -> None:
@@ -248,3 +264,166 @@ async def test_greenhouse_cleanup_on_remove(hass: HomeAssistant) -> None:
     # Simulate removal
     await light.async_will_remove_from_hass()
     assert light._greenhouse_unsub is None
+
+
+async def test_greenhouse_set_auto_mode(hass: HomeAssistant) -> None:
+    """Test setting auto mode determines correct mode based on time."""
+
+    class MockHueLight(GreenhouseLightMixin):
+        def __init__(self, hass: HomeAssistant) -> None:
+            self.hass = hass
+            self._kwargs: dict[str, Any] | None = None
+            super().__init__()
+
+        async def async_turn_on(self, **kwargs: Any) -> None:
+            """Mock turn on to capture arguments."""
+            self._kwargs = kwargs
+
+        def async_write_ha_state(self) -> None:
+            """Mock write state."""
+
+    light = MockHueLight(hass)
+
+    # Test at daytime (10:00) - should set growth mode
+    daytime = dt_util.now().replace(hour=10, minute=0, second=0)
+    with patch(
+        "homeassistant.components.hue.greenhouse_light.dt_util.now",
+        return_value=daytime,
+    ):
+        light.set_greenhouse_mode_auto()
+
+    assert light._greenhouse_active is True
+    assert light._greenhouse_mode == "growth"
+    assert light._kwargs is not None
+    assert light._kwargs["brightness"] == 255
+    assert light._kwargs["color_temp_kelvin"] == 6500
+
+    # Reset for next test
+    light._greenhouse_mode = None
+    light._kwargs = None
+
+    # Test at nighttime (22:00) - should set rest mode
+    nighttime = dt_util.now().replace(hour=22, minute=0, second=0)
+    with patch(
+        "homeassistant.components.hue.greenhouse_light.dt_util.now",
+        return_value=nighttime,
+    ):
+        light.set_greenhouse_mode_auto()
+
+    assert light._greenhouse_active is True
+    assert light._greenhouse_mode == "rest"
+    assert light._kwargs is not None
+    assert light._kwargs["brightness"] == 50
+    assert light._kwargs["color_temp_kelvin"] == 2700
+
+
+async def test_greenhouse_schedule_without_now_parameter(hass: HomeAssistant) -> None:
+    """Test that schedule check works when called without explicit time."""
+
+    class MockHueLight(GreenhouseLightMixin):
+        def __init__(self, hass: HomeAssistant) -> None:
+            self.hass = hass
+            self._kwargs: dict[str, Any] | None = None
+            super().__init__()
+
+        async def async_turn_on(self, **kwargs: Any) -> None:
+            """Mock turn on to capture arguments."""
+            self._kwargs = kwargs
+
+        def async_write_ha_state(self) -> None:
+            """Mock write state."""
+
+    light = MockHueLight(hass)
+    light._greenhouse_active = True
+    light._greenhouse_mode = "growth"
+
+    # Call without explicit time (should use dt_util.now())
+    nighttime = dt_util.now().replace(hour=22, minute=0, second=0)
+    with patch(
+        "homeassistant.components.hue.greenhouse_light.dt_util.now",
+        return_value=nighttime,
+    ):
+        light._async_check_greenhouse_schedule()  # No time parameter
+
+    # Should switch to rest mode
+    assert light._greenhouse_mode == "rest"
+    assert light._kwargs is not None
+
+
+async def test_greenhouse_update_schedule(hass: HomeAssistant) -> None:
+    """Test updating greenhouse schedule times."""
+
+    class MockHueLight(GreenhouseLightMixin):
+        def __init__(self, hass: HomeAssistant) -> None:
+            self.hass = hass
+            self._kwargs: dict[str, Any] | None = None
+            super().__init__()
+
+        async def async_turn_on(self, **kwargs: Any) -> None:
+            """Mock turn on to capture arguments."""
+            self._kwargs = kwargs
+
+        def async_write_ha_state(self) -> None:
+            """Mock write state."""
+
+    light = MockHueLight(hass)
+    light._greenhouse_active = True
+
+    # Test valid schedule update
+    light.update_greenhouse_schedule(8, 20)
+    assert light._growth_hour == 8
+    assert light._rest_hour == 20
+
+    # Test invalid hour (out of range)
+    light.update_greenhouse_schedule(25, 20)  # Invalid growth_hour
+    assert light._growth_hour == 8  # Should not change
+    assert light._rest_hour == 20
+
+    light.update_greenhouse_schedule(8, -1)  # Invalid rest_hour
+    assert light._growth_hour == 8  # Should not change
+    assert light._rest_hour == 20
+
+    # Test same hour (should be rejected)
+    light.update_greenhouse_schedule(12, 12)
+    assert light._growth_hour == 8  # Should not change
+    assert light._rest_hour == 20
+
+
+async def test_greenhouse_schedule_re_registration(hass: HomeAssistant) -> None:
+    """Test that updating schedule re-registers the time tracker."""
+
+    class MockBase:
+        """Mock base class with async lifecycle methods."""
+
+        async def async_added_to_hass(self) -> None:
+            """Mock base async_added_to_hass."""
+
+        async def async_will_remove_from_hass(self) -> None:
+            """Mock base async_will_remove_from_hass."""
+
+    class MockHueLight(GreenhouseLightMixin, MockBase):
+        def __init__(self, hass: HomeAssistant) -> None:
+            self.hass = hass
+            GreenhouseLightMixin.__init__(self)
+
+        async def async_turn_on(self, **kwargs: Any) -> None:
+            """Mock turn on."""
+
+        def async_write_ha_state(self) -> None:
+            """Mock write state."""
+
+    light = MockHueLight(hass)
+
+    # Simulate adding to hass (registers schedule)
+    await light.async_added_to_hass()
+    first_unsub = light._greenhouse_unsub
+    assert first_unsub is not None
+
+    # Call _register_greenhouse_schedule again (should cancel old and create new)
+    light._register_greenhouse_schedule()
+    second_unsub = light._greenhouse_unsub
+
+    # Should have a new unsub function (different object)
+    assert second_unsub is not None
+    # The function reference should be the same type
+    assert callable(second_unsub)

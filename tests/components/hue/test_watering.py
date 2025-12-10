@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from homeassistant.components.hue.const import (
+    ATTR_NEXT_WATERING,
     DEFAULT_WATERING_DURATION,
     DOMAIN,
     SERVICE_ACTIVATE_WATERING,
@@ -266,3 +267,127 @@ async def test_watering_cleanup_on_remove(hass: HomeAssistant) -> None:
     await plug.async_will_remove_from_hass()
     assert plug._watering_schedule_unsub is None
     assert plug._watering_auto_off_unsub is None
+
+
+async def test_watering_update_schedule(hass: HomeAssistant) -> None:
+    """Test updating watering schedule times."""
+
+    class MockWateringPlug(WateringPlugMixin):
+        def __init__(self, hass: HomeAssistant) -> None:
+            self.hass = hass
+            self.is_on = False
+            super().__init__()
+
+        async def async_turn_on(self, **kwargs: Any) -> None:
+            self.is_on = True
+
+        async def async_turn_off(self, **kwargs: Any) -> None:
+            self.is_on = False
+
+        def async_write_ha_state(self) -> None:
+            pass
+
+    plug = MockWateringPlug(hass)
+
+    # Test valid schedule update
+    plug.update_watering_schedule(8, 30)
+    assert plug._watering_hour == 8
+    assert plug._watering_minute == 30
+
+    # Test invalid hour (out of range)
+    plug.update_watering_schedule(25, 30)  # Invalid hour
+    assert plug._watering_hour == 8  # Should not change
+    assert plug._watering_minute == 30
+
+    # Test invalid minute (out of range)
+    plug.update_watering_schedule(8, 61)  # Invalid minute
+    assert plug._watering_hour == 8  # Should not change
+    assert plug._watering_minute == 30
+
+    # Test negative values
+    plug.update_watering_schedule(-1, 30)
+    assert plug._watering_hour == 8  # Should not change
+    plug.update_watering_schedule(8, -1)
+    assert plug._watering_minute == 30  # Should not change
+
+
+async def test_watering_schedule_re_registration(hass: HomeAssistant) -> None:
+    """Test that updating schedule re-registers the time tracker."""
+
+    class MockBase:
+        """Mock base class with async lifecycle methods."""
+
+        async def async_added_to_hass(self) -> None:
+            """Mock base async_added_to_hass."""
+
+        async def async_will_remove_from_hass(self) -> None:
+            """Mock base async_will_remove_from_hass."""
+
+    class MockWateringPlug(WateringPlugMixin, MockBase):
+        def __init__(self, hass: HomeAssistant) -> None:
+            self.hass = hass
+            self.is_on = False
+            WateringPlugMixin.__init__(self)
+
+        async def async_turn_on(self, **kwargs: Any) -> None:
+            self.is_on = True
+
+        async def async_turn_off(self, **kwargs: Any) -> None:
+            self.is_on = False
+
+        def async_write_ha_state(self) -> None:
+            pass
+
+    plug = MockWateringPlug(hass)
+
+    # Simulate adding to hass (registers schedule)
+    await plug.async_added_to_hass()
+    first_unsub = plug._watering_schedule_unsub
+    assert first_unsub is not None
+
+    # Call _register_watering_schedule again (should cancel old and create new)
+    plug._register_watering_schedule()
+    second_unsub = plug._watering_schedule_unsub
+
+    # Should have a new unsub function
+    assert second_unsub is not None
+    assert callable(second_unsub)
+
+
+async def test_watering_next_run_calculation(hass: HomeAssistant) -> None:
+    """Test that next_run calculation handles past times correctly."""
+
+    class MockWateringPlug(WateringPlugMixin):
+        def __init__(self, hass: HomeAssistant) -> None:
+            self.hass = hass
+            self.is_on = False
+            super().__init__()
+
+        async def async_turn_on(self, **kwargs: Any) -> None:
+            self.is_on = True
+
+        async def async_turn_off(self, **kwargs: Any) -> None:
+            self.is_on = False
+
+        def async_write_ha_state(self) -> None:
+            pass
+
+    plug = MockWateringPlug(hass)
+
+    # Set watering time to earlier today (e.g., 6:00)
+    plug._watering_hour = 6
+    plug._watering_minute = 0
+
+    # Test when current time is after watering time (e.g., 14:00)
+    # Should show tomorrow's watering time
+    afternoon = dt_util.now().replace(hour=14, minute=0, second=0)
+    with patch(
+        "homeassistant.components.hue.watering_plug.dt_util.now", return_value=afternoon
+    ):
+        attrs = plug.extra_state_attributes
+
+    # next_watering_time should be tomorrow
+    assert ATTR_NEXT_WATERING in attrs
+    next_watering = dt_util.parse_datetime(attrs[ATTR_NEXT_WATERING])
+    assert next_watering is not None
+    assert next_watering > afternoon  # Should be in the future
