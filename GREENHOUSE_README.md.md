@@ -51,22 +51,20 @@ This project includes a fully configured Home Assistant Core Dev Container.
 ## Usage Guide
 
 ### Manual Watering
-
-Greenhouse → Smart Watering → Manual Water Now
 	•	Activates pump for 30 seconds
-   •	State updates automatically
+	•	State updates automatically
 
 ### Automatic Watering Schedule
 
-Set schedules like 06:00 and 18:00, system will water automatically.
+	•	Set schedules like 06:00 and 18:00, system will water automatically.
 
 ### Lighting Control
 
-Growth Mode
+#### Growth Mode
 	•	6500K
 	•	100% brightness
 
-Rest Mode
+#### Rest Mode
 	•	2700K
 	•	20% brightness
 
@@ -85,6 +83,7 @@ The project is based on a fork of Home Assistant Core, with all greenhouse-relat
 backend logic and frontend UI integrated directly into the repository. Below is a
 simplified overview of the relevant structure:
 
+```
 homeassistant-core/
 │
 ├── homeassistant/
@@ -101,6 +100,7 @@ homeassistant-core/
     └── frontend/
         └── www/
             └── greenhouse-panel.js        # Custom Greenhouse UI pane
+```
 
 The backend extends the Philips Hue integration using mixins, while the frontend
 implements a custom panel based on LitElement. Both parts are fully integrated
