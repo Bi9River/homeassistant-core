@@ -540,7 +540,11 @@ class GreenhousePanel extends LitElement {
           `);
           i++; // Skip the next part as we've already processed it
         }
-      } else if (i === 0 || !parts[i - 1] || !/^\d+\.\s*$/.test(parts[i - 1])) {
+      } else if (
+        i === 0 ||
+        !parts[i - 1] ||
+        !/^\d{1,3}\.\s*$/.test(parts[i - 1])
+      ) {
         // It's a non-numbered text (like an introduction)
         formattedParts.push(html`
           <div class="ai-intro-text" .innerHTML=${part}></div>

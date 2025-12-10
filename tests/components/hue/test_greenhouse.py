@@ -55,9 +55,10 @@ async def test_greenhouse_scheduler_logic(
     # We patch the HueBridge CLASS.
     # When __init__.py calls HueBridge(hass, entry), it gets our mock_hue_bridge.
     with patch("homeassistant.components.hue.HueBridge", return_value=mock_hue_bridge):
+        # Using RFC 5737 TEST-NET-1 address for mock testing
         entry = MockConfigEntry(
             domain=DOMAIN,
-            data={"host": "1.2.3.4", "api_key": "mock-api-key"},
+            data={"host": "192.0.2.1", "api_key": "mock-api-key"},
             unique_id="001788FFFE23BFC2",
         )
         entry.add_to_hass(hass)
