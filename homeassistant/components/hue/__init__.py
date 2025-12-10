@@ -378,12 +378,10 @@ async def async_handle_ai_query_service(hass: HomeAssistant, call) -> ServiceRes
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up Hue integration."""
 
-    # Load DeepSeek API Key from environment or use hardcoded value for development
-    api_key: str | None = "sk-581d1459d5ef4a9d8df4aa412af31e74"
+    # Load DeepSeek API Key from environment variables or secrets.yaml
+    # Priority: 1. Environment variable, 2. secrets.yaml
+    api_key: str | None = os.environ.get("DEEPSEEK_API_KEY")
 
-    # Fallback to environment or secrets if not hardcoded
-    if not api_key:
-        api_key = os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
         # Try to get from secrets.yaml if available
         with contextlib.suppress(Exception):

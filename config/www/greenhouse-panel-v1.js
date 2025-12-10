@@ -669,26 +669,6 @@ class GreenhousePanel extends LitElement {
     `;
   }
 
-  // Watering Schedule - HALF WIDTH
-  _renderWateringSchedule() {
-    return html`
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <ha-icon icon="mdi:calendar-clock" class="icon"></ha-icon
-            ><span>Watering Schedule</span>
-          </div>
-        </div>
-        <div class="schedule-item">
-          <div class="schedule-time">
-            <ha-icon icon="mdi:weather-sunset-up"></ha-icon> Daily at 07:00
-          </div>
-          <div class="schedule-action">Automatic watering - 30s</div>
-        </div>
-      </div>
-    `;
-  }
-
   // Lighting Schedule - HALF WIDTH
   _renderLightingSchedule() {
     return html`
@@ -1257,61 +1237,6 @@ class GreenhousePanel extends LitElement {
         entity_id: entityId,
         value: value,
       });
-    }
-  }
-
-  // Handle preset question click
-  async _askPresetQuestion(question) {
-    this._aiLoading = true;
-    this._aiAnalysis = "";
-    this.requestUpdate();
-
-    try {
-      const conditions = {
-        temperature: this._simTemp,
-        humidity: this._simHumidity,
-        lightMode: this._greenhouseMode,
-      };
-
-      console.log("Asking preset question:", question);
-
-      // Import the AI assistant function
-      const { AIAssistant } = await import("./ai-assistant.js");
-      const assistant = new AIAssistant(this.hass);
-
-      // Create context-aware prompt
-      const contextPrompt = `Current greenhouse conditions:
-- Temperature: ${conditions.temperature}°C
-- Humidity: ${conditions.humidity}%
-- Light Mode: ${
-        conditions.lightMode === "growth"
-          ? "Cool Daylight (6500K)"
-          : "Warm White (2700K)"
-      }
-
-Question: ${question}
-
-Please provide a specific answer based on these current conditions. Keep the response concise (2-3 sentences).`;
-
-      const response = await assistant.chat(contextPrompt);
-
-      console.log("AI Response:", response);
-      // Display question at the top of the answer for context
-      this._aiAnalysis = `**Question:** ${question}\n - \n${response}`;
-    } catch (error) {
-      console.error("Preset question error:", error);
-
-      if (error.message.includes("Invalid API key")) {
-        this._aiAnalysis =
-          "⚠ Authentication failed: Please check your API key in config.js";
-      } else if (error.message.includes("Rate limit")) {
-        this._aiAnalysis = "⚠ Rate limit exceeded: Please try again later.";
-      } else {
-        this._aiAnalysis = `⚠ Error: ${error.message}`;
-      }
-    } finally {
-      this._aiLoading = false;
-      this.requestUpdate();
     }
   }
 
