@@ -14,12 +14,15 @@ from homeassistant.helpers.typing import ConfigType
 
 from .bridge import HueBridge, HueConfigEntry
 from .const import (
+    ATTR_GROWTH_HOUR,
+    ATTR_REST_HOUR,
     ATTR_WATERING_HOUR,
     ATTR_WATERING_MINUTE,
     DOMAIN,
     GREENHOUSE_SCENES,
     SERVICE_ACTIVATE_WATERING,
     SERVICE_SET_GREENHOUSE_SCENE,
+    SERVICE_SET_GREENHOUSE_SCHEDULE,
     SERVICE_SET_WATERING_SCHEDULE,
 )
 from .migration import check_migration
@@ -32,7 +35,9 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 # --- GREENHOUSE LOGIC ---
 GREENHOUSE_SERVICE_SCHEMA = vol.Schema(
     {
-        vol.Required("mode"): vol.In([*list(GREENHOUSE_SCENES.keys()), "manual"]),
+        vol.Required("mode"): vol.In(
+            [*list(GREENHOUSE_SCENES.keys()), "manual", "auto"]
+        ),
         vol.Optional(ATTR_ENTITY_ID): cv.entity_ids,
     }
 )
@@ -72,6 +77,11 @@ async def async_handle_greenhouse_service(hass: HomeAssistant, call):
             entity_object.clear_greenhouse_mode()
             _LOGGER.debug("Greenhouse automation disabled for %s", entity_id)
             # We DO NOT call light.turn_on here, just clear the mode.
+        elif mode == "auto":
+            # Enable auto-schedule and determine mode based on current time
+            entity_object.set_greenhouse_mode_auto()
+            _LOGGER.debug("Greenhouse automation enabled (auto mode) for %s", entity_id)
+            # The entity will determine and apply the correct scene automatically
         else:
             # Enable auto-schedule and set specific mode
             entity_object.set_greenhouse_mode(mode)
@@ -217,6 +227,77 @@ async def async_handle_watering_schedule_service(hass: HomeAssistant, call):
             )
 
 
+# --- GREENHOUSE SCHEDULE SERVICE ---
+GREENHOUSE_SCHEDULE_SERVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_ids,
+        vol.Required(ATTR_GROWTH_HOUR): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=23)
+        ),
+        vol.Required(ATTR_REST_HOUR): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=23)
+        ),
+    }
+)
+
+
+async def async_handle_greenhouse_schedule_service(hass: HomeAssistant, call):
+    """Handle the service call to update greenhouse schedule."""
+    target_entities = call.data.get(ATTR_ENTITY_ID)
+    growth_hour = call.data[ATTR_GROWTH_HOUR]
+    rest_hour = call.data[ATTR_REST_HOUR]
+
+    _LOGGER.info(
+        "Updating greenhouse schedule for entities %s to growth=%02d:00, rest=%02d:00",
+        target_entities,
+        growth_hour,
+        rest_hour,
+    )
+
+    for entity_id in target_entities:
+        # 1. Verify entity exists
+        if not hass.states.get(entity_id):
+            _LOGGER.warning("Entity %s not found in state machine", entity_id)
+            continue
+
+        # 2. Get domain and component
+        domain = entity_id.split(".")[0]
+        component = hass.data.get(domain)
+
+        if not component or not hasattr(component, "get_entity"):
+            _LOGGER.warning("Component for domain '%s' not loaded", domain)
+            continue
+
+        # 3. Get runtime entity object
+        entity_object = component.get_entity(entity_id)
+
+        if not entity_object:
+            _LOGGER.warning("Could not get runtime entity object for %s", entity_id)
+            continue
+
+        # 4. Duck Typing Check
+        if not hasattr(entity_object, "update_greenhouse_schedule"):
+            _LOGGER.error(
+                "Entity %s does not support greenhouse schedule updates",
+                entity_id,
+            )
+            continue
+
+        # 5. Execute schedule update
+        try:
+            _LOGGER.debug(
+                "Updating greenhouse schedule for %s to growth=%02d:00, rest=%02d:00",
+                entity_id,
+                growth_hour,
+                rest_hour,
+            )
+            entity_object.update_greenhouse_schedule(growth_hour, rest_hour)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error(
+                "Failed to update greenhouse schedule for %s: %s", entity_id, err
+            )
+
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up Hue integration."""
 
@@ -254,6 +335,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         SERVICE_SET_WATERING_SCHEDULE,
         _async_watering_schedule_handler,
         schema=WATERING_SCHEDULE_SERVICE_SCHEMA,
+    )
+
+    # 5. Register Greenhouse Schedule Service
+    async def _async_greenhouse_schedule_handler(call):
+        await async_handle_greenhouse_schedule_service(hass, call)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_GREENHOUSE_SCHEDULE,
+        _async_greenhouse_schedule_handler,
+        schema=GREENHOUSE_SCHEDULE_SERVICE_SCHEMA,
     )
 
     return True

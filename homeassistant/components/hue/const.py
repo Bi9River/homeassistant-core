@@ -80,6 +80,9 @@ GREENHOUSE_SCENES = {
 
 CONF_GREENHOUSE_MODE = "greenhouse_mode"
 SERVICE_SET_GREENHOUSE_SCENE = "set_greenhouse_scene"
+SERVICE_SET_GREENHOUSE_SCHEDULE = "set_greenhouse_schedule"
+ATTR_GROWTH_HOUR = "growth_hour"
+ATTR_REST_HOUR = "rest_hour"
 
 # SMART WATERING DEFINITIONS (SEP-14)
 CONF_WATERING_DURATION = "duration"

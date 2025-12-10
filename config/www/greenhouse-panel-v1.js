@@ -22,6 +22,7 @@ class GreenhousePanel extends LitElement {
       _showPresetQuestions: { type: Boolean }, // Show preset questions panel
 
       wateringSchedule: { type: Object },
+      greenhouseSchedule: { type: Object },
     };
   }
 
@@ -54,6 +55,13 @@ class GreenhousePanel extends LitElement {
       hour: 12,
       minute: 0,
       duration: 30,
+    };
+
+    this.greenhouseSchedule = {
+      growthTime: "06:00",
+      restTime: "18:00",
+      growthHour: 6,
+      restHour: 18,
     };
   }
 
@@ -101,6 +109,18 @@ class GreenhousePanel extends LitElement {
             lightStateObj.attributes.greenhouse_active === true;
           this._greenhouseMode =
             lightStateObj.attributes.greenhouse_mode || "manual";
+        }
+
+        // Sync greenhouse schedule from backend
+        const backendGrowthHour = lightStateObj.attributes.growth_hour;
+        const backendRestHour = lightStateObj.attributes.rest_hour;
+        if (backendGrowthHour !== undefined && backendRestHour !== undefined) {
+          this.greenhouseSchedule = {
+            growthTime: `${String(backendGrowthHour).padStart(2, "0")}:00`,
+            restTime: `${String(backendRestHour).padStart(2, "0")}:00`,
+            growthHour: backendGrowthHour,
+            restHour: backendRestHour,
+          };
         }
       }
     }
@@ -634,13 +654,25 @@ class GreenhousePanel extends LitElement {
             <span class="icon">📅</span><span>Lighting Schedule</span>
           </div>
         </div>
-        <div class="schedule-item">
-          <div class="schedule-time">🌞 Growth (06:00-18:00)</div>
+        <div
+          class="schedule-item"
+          @click="${this._showGreenhouseScheduleDialog}"
+        >
+          <div class="schedule-time">
+            🌞 Growth starts at ${this.greenhouseSchedule.growthTime}
+          </div>
           <div class="schedule-action">Cool daylight (6500K), 100%</div>
+          <ha-icon icon="mdi:pencil" class="edit-icon"></ha-icon>
         </div>
-        <div class="schedule-item">
-          <div class="schedule-time">🌙 Rest (18:00-06:00)</div>
+        <div
+          class="schedule-item"
+          @click="${this._showGreenhouseScheduleDialog}"
+        >
+          <div class="schedule-time">
+            🌙 Rest starts at ${this.greenhouseSchedule.restTime}
+          </div>
           <div class="schedule-action">Warm white (2700K), 20%</div>
+          <ha-icon icon="mdi:pencil" class="edit-icon"></ha-icon>
         </div>
       </div>
     `;
@@ -671,7 +703,177 @@ class GreenhousePanel extends LitElement {
     `;
   }
 
-  // Dialog box for adjusting schedules
+  // Dialog box for adjusting greenhouse lighting schedule
+  _showGreenhouseScheduleDialog() {
+    const dialog = document.createElement("div");
+    dialog.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+  `;
+
+    // Generate hour options (every hour, 0-23)
+    const hourOptions = [];
+    for (let hour = 0; hour < 24; hour++) {
+      hourOptions.push({
+        value: hour,
+        label: `${String(hour).padStart(2, "0")}:00`,
+      });
+    }
+
+    // Options HTML for growth hour
+    const growthOptionsHTML = hourOptions
+      .map((opt) => {
+        const selected =
+          opt.value === this.greenhouseSchedule.growthHour ? "selected" : "";
+        return `<option value="${opt.value}" ${selected}>${opt.label}</option>`;
+      })
+      .join("");
+
+    // Options HTML for rest hour
+    const restOptionsHTML = hourOptions
+      .map((opt) => {
+        const selected =
+          opt.value === this.greenhouseSchedule.restHour ? "selected" : "";
+        return `<option value="${opt.value}" ${selected}>${opt.label}</option>`;
+      })
+      .join("");
+
+    dialog.innerHTML = `
+    <div style="
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+    " class="dialog-overlay"></div>
+
+    <div style="
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      min-width: 320px;
+      max-width: 400px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+      z-index: 10000;
+    " class="dialog-content">
+      <h3 style="margin: 0 0 20px 0; font-size: 18px; font-weight: 600;">
+        Adjust Lighting Schedule
+      </h3>
+
+      <div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px;">
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <label style="font-size: 14px; font-weight: 500; color: #333;">
+            🌞 Growth mode starts at:
+          </label>
+          <select id="growth-hour-select" style="
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-family: inherit;
+            background: white;
+            cursor: pointer;
+          ">
+            ${growthOptionsHTML}
+          </select>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <label style="font-size: 14px; font-weight: 500; color: #333;">
+            🌙 Rest mode starts at:
+          </label>
+          <select id="rest-hour-select" style="
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-family: inherit;
+            background: white;
+            cursor: pointer;
+          ">
+            ${restOptionsHTML}
+          </select>
+        </div>
+      </div>
+
+      <div class="dialog-actions" style="display: flex; gap: 12px; justify-content: flex-end;">
+        <button class="cancel-btn" style="
+          padding: 10px 20px;
+          border: none;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          background: #e0e0e0;
+          font-family: inherit;
+        ">Cancel</button>
+        <button class="confirm-btn" style="
+          padding: 10px 20px;
+          border: none;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          background: #4CAF50;
+          color: white;
+          font-family: inherit;
+        ">Confirm</button>
+      </div>
+    </div>
+  `;
+
+    document.body.appendChild(dialog);
+
+    const closeDialog = () => {
+      console.log("Closing greenhouse schedule dialog");
+      if (dialog && dialog.parentNode) {
+        document.body.removeChild(dialog);
+      }
+    };
+
+    dialog.querySelector(".cancel-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeDialog();
+    });
+
+    dialog.querySelector(".dialog-overlay").addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeDialog();
+    });
+
+    dialog.querySelector(".confirm-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+
+      const growthHour = parseInt(
+        dialog.querySelector("#growth-hour-select").value,
+        10,
+      );
+      const restHour = parseInt(
+        dialog.querySelector("#rest-hour-select").value,
+        10,
+      );
+
+      if (growthHour === restHour) {
+        alert("Growth hour and rest hour cannot be the same!");
+        return;
+      }
+
+      console.log("Updating greenhouse schedule:", growthHour, restHour);
+      this._updateGreenhouseSchedule(growthHour, restHour);
+      closeDialog();
+    });
+  }
+
+  // Dialog box for adjusting watering schedules
   _showTimePickerDialog() {
     const dialog = document.createElement("div");
     dialog.style.cssText = `
@@ -840,6 +1042,30 @@ class GreenhousePanel extends LitElement {
     );
   }
 
+  // Call backend service to update greenhouse lighting schedule
+  _updateGreenhouseSchedule(growthHour, restHour) {
+    // Update local state for immediate UI feedback
+    this.greenhouseSchedule = {
+      growthTime: `${String(growthHour).padStart(2, "0")}:00`,
+      restTime: `${String(restHour).padStart(2, "0")}:00`,
+      growthHour,
+      restHour,
+    };
+
+    this.requestUpdate();
+
+    // Call backend service to persist the schedule change
+    this.hass.callService("hue", "set_greenhouse_schedule", {
+      entity_id: this.lightEntityId,
+      growth_hour: growthHour,
+      rest_hour: restHour,
+    });
+
+    console.log(
+      `Greenhouse schedule updated to growth=${growthHour}:00, rest=${restHour}:00 via backend service`,
+    );
+  }
+
   // ==================== ACTION HANDLERS (OPTIMISTIC UI) ====================
 
   _handleManualWater() {
@@ -892,13 +1118,15 @@ class GreenhousePanel extends LitElement {
 
   _handleAutoLightToggle() {
     const newActive = !this._greenhouseActive;
-    const targetMode = newActive ? "growth" : "manual";
+    const targetMode = newActive ? "auto" : "manual";
 
     this._greenhouseActive = newActive;
     if (newActive) {
-      this._greenhouseMode = "growth";
+      // Turning on auto mode - light will be turned on by backend
       this._lightOn = true;
+      // Don't set _greenhouseMode here, let backend determine based on time
     } else {
+      // Turning off auto mode
       this._greenhouseMode = "manual";
     }
 

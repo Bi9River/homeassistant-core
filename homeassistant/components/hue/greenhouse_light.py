@@ -13,8 +13,8 @@ from homeassistant.util import dt as dt_util
 from .const import GREENHOUSE_SCENES
 
 # Configuration: Growth starts at 06:00, Rest starts at 18:00
-GROWTH_HOUR = 6
-REST_HOUR = 18
+DEFAULT_GROWTH_HOUR = 6
+DEFAULT_REST_HOUR = 18
 
 if TYPE_CHECKING:
     # Elegant fix: We don't inherit from Entity.
@@ -51,15 +51,15 @@ class GreenhouseLightMixin(GreenhouseLightMixinBase):
         self._greenhouse_mode: str | None = None
         self._greenhouse_active: bool = False
         self._greenhouse_unsub: Callable[[], None] | None = None
+        self._growth_hour: int = DEFAULT_GROWTH_HOUR
+        self._rest_hour: int = DEFAULT_REST_HOUR
 
     async def async_added_to_hass(self) -> None:
         """Run when entity is added to register the scheduler."""
         await super().async_added_to_hass()
         # Hook into the Home Assistant event loop
         if self.hass:
-            self._greenhouse_unsub = async_track_time_change(
-                self.hass, self._async_check_greenhouse_schedule, second=0, minute=0
-            )
+            self._register_greenhouse_schedule()
 
     async def async_will_remove_from_hass(self) -> None:
         """Clean up listeners when entity is removed."""
@@ -75,6 +75,14 @@ class GreenhouseLightMixin(GreenhouseLightMixinBase):
             return
         self._greenhouse_mode = mode
         self._greenhouse_active = True
+        self.async_write_ha_state()
+
+    @callback
+    def set_greenhouse_mode_auto(self) -> None:
+        """Enable auto mode and determine current mode based on time."""
+        self._greenhouse_active = True
+        # Immediately check and apply the correct mode for current time
+        self._async_check_greenhouse_schedule()
         self.async_write_ha_state()
 
     @callback
@@ -97,7 +105,7 @@ class GreenhouseLightMixin(GreenhouseLightMixinBase):
 
         # Determine correct mode based on time
         target_mode = "rest"
-        if GROWTH_HOUR <= now.hour < REST_HOUR:
+        if self._growth_hour <= now.hour < self._rest_hour:
             target_mode = "growth"
 
         # If we are already in the target mode, do nothing
@@ -116,11 +124,43 @@ class GreenhouseLightMixin(GreenhouseLightMixinBase):
             self.hass.async_create_task(
                 self.async_turn_on(
                     brightness=scene_data["brightness"],
-                    color_temp=scene_data["color_temp"],
+                    color_temp_kelvin=scene_data["color_temp_kelvin"],
                 )
             )
+
+    def _register_greenhouse_schedule(self) -> None:
+        """Register the greenhouse schedule checker with current settings."""
+        if self._greenhouse_unsub:
+            self._greenhouse_unsub()
+            self._greenhouse_unsub = None
+
+        # check every hour at the top of the hour
+        self._greenhouse_unsub = async_track_time_change(
+            self.hass, self._async_check_greenhouse_schedule, second=0, minute=0
+        )
+
+    @callback
+    def update_greenhouse_schedule(self, growth_hour: int, rest_hour: int) -> None:
+        """Update the greenhouse schedule to new times."""
+        if not (0 <= growth_hour <= 23 and 0 <= rest_hour <= 23):
+            return
+
+        if growth_hour == rest_hour:
+            return  # Same hour doesn't make sense
+
+        self._growth_hour = growth_hour
+        self._rest_hour = rest_hour
+
+        # Re-check schedule immediately with new times
+        self._async_check_greenhouse_schedule()
+        self.async_write_ha_state()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return the optional state attributes."""
-        return {}
+        return {
+            "growth_hour": self._growth_hour,
+            "rest_hour": self._rest_hour,
+            "growth_time": f"{self._growth_hour:02d}:00",
+            "rest_time": f"{self._rest_hour:02d}:00",
+        }
