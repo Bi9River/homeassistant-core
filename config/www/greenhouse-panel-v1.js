@@ -644,6 +644,25 @@ class GreenhousePanel extends LitElement {
           </div>
         </div>
 
+        <!-- Progress Bar for Temperature -->
+        <div style="margin-top: 16px;">
+          <div
+            style="display: flex; justify-content: space-between; font-size: 12px; color: var(--secondary-text-color); margin-bottom: 4px;"
+          >
+            <span>Temperature Level</span>
+            <span>${this._simTemp}°C</span>
+          </div>
+          <div class="progress-bar">
+            <div
+              class="progress-fill"
+              style="width: ${(this._simTemp * 100) / 40.0}%; background: ${this
+                ._simTemp > 30
+                ? "var(--warning-color)"
+                : "var(--success-color)"};"
+            ></div>
+          </div>
+        </div>
+
         <!-- Progress Bar for Humidity -->
         <div style="margin-top: 16px;">
           <div
@@ -674,7 +693,9 @@ class GreenhousePanel extends LitElement {
       <div class="card">
         <div class="card-header">
           <div class="card-title">
-            <span class="icon">🏡</span>
+            <span class="overview-icon">
+              <ha-icon icon="mdi:home-variant"></ha-icon>
+            </span>
             <span>Greenhouse Devices Overview</span>
           </div>
         </div>
@@ -720,7 +741,9 @@ class GreenhousePanel extends LitElement {
             <ha-icon icon="mdi:weather-sunny"></ha-icon> Growth starts at
             ${this.greenhouseSchedule.growthTime}
           </div>
-          <div class="schedule-action">Cool daylight (6500K), 100%</div>
+          <div class="schedule-action">
+            Cool daylight (6500K), 100% Brightness
+          </div>
         </div>
         <div
           class="schedule-item"
@@ -730,7 +753,7 @@ class GreenhousePanel extends LitElement {
             <ha-icon icon="mdi:weather-night"></ha-icon> Rest starts at
             ${this.greenhouseSchedule.restTime}
           </div>
-          <div class="schedule-action">Warm white (2700K), 20%</div>
+          <div class="schedule-action">Warm white (2700K), 20% Brightness</div>
         </div>
       </div>
     `;
@@ -753,8 +776,7 @@ class GreenhousePanel extends LitElement {
             ${this.wateringSchedule.time}
           </div>
           <div class="schedule-action">
-            Morning watering - ${this.wateringSchedule.duration} seconds
-            duration
+            ${this.wateringSchedule.duration} seconds duration
           </div>
         </div>
       </div>
@@ -934,6 +956,15 @@ class GreenhousePanel extends LitElement {
 
         if (growthHour === restHour) {
           alert("Growth hour and rest hour cannot be the same!");
+          return;
+        }
+
+        if (growthHour >= restHour) {
+          alert(
+            "Growth time must be before rest time!\n\n" +
+              "Example: Growth at 6:00, Rest at 18:00\n" +
+              "(Plants need daylight before nighttime rest)",
+          );
           return;
         }
 

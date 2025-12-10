@@ -148,6 +148,9 @@ class GreenhouseLightMixin(GreenhouseLightMixinBase):
         if growth_hour == rest_hour:
             return  # Same hour doesn't make sense
 
+        if growth_hour >= rest_hour:
+            return  # Growth must start before rest
+
         self._growth_hour = growth_hour
         self._rest_hour = rest_hour
 

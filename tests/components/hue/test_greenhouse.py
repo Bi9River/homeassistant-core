@@ -389,6 +389,11 @@ async def test_greenhouse_update_schedule(hass: HomeAssistant) -> None:
     assert light._growth_hour == 8  # Should not change
     assert light._rest_hour == 20
 
+    # Test reverse schedule (growth after rest - should be rejected)
+    light.update_greenhouse_schedule(18, 7)  # Growth at 18:00, Rest at 7:00
+    assert light._growth_hour == 8  # Should not change
+    assert light._rest_hour == 20  # Should not change
+
 
 async def test_greenhouse_schedule_re_registration(hass: HomeAssistant) -> None:
     """Test that updating schedule re-registers the time tracker."""
