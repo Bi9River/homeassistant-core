@@ -14,10 +14,13 @@ from homeassistant.helpers.typing import ConfigType
 
 from .bridge import HueBridge, HueConfigEntry
 from .const import (
+    ATTR_WATERING_HOUR,
+    ATTR_WATERING_MINUTE,
     DOMAIN,
     GREENHOUSE_SCENES,
     SERVICE_ACTIVATE_WATERING,
     SERVICE_SET_GREENHOUSE_SCENE,
+    SERVICE_SET_WATERING_SCHEDULE,
 )
 from .migration import check_migration
 from .services import async_setup_services
@@ -143,6 +146,77 @@ async def async_handle_watering_service(hass: HomeAssistant, call):
             _LOGGER.error("Failed to start watering for %s: %s", entity_id, err)
 
 
+# --- WATERING SCHEDULE SERVICE ---
+WATERING_SCHEDULE_SERVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_ids,
+        vol.Required(ATTR_WATERING_HOUR): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=23)
+        ),
+        vol.Required(ATTR_WATERING_MINUTE): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=59)
+        ),
+    }
+)
+
+
+async def async_handle_watering_schedule_service(hass: HomeAssistant, call):
+    """Handle the service call to update watering schedule."""
+    target_entities = call.data.get(ATTR_ENTITY_ID)
+    hour = call.data[ATTR_WATERING_HOUR]
+    minute = call.data[ATTR_WATERING_MINUTE]
+
+    _LOGGER.info(
+        "Updating watering schedule for entities %s to %02d:%02d",
+        target_entities,
+        hour,
+        minute,
+    )
+
+    for entity_id in target_entities:
+        # 1. Verify entity exists
+        if not hass.states.get(entity_id):
+            _LOGGER.warning("Entity %s not found in state machine", entity_id)
+            continue
+
+        # 2. Get domain and component
+        domain = entity_id.split(".")[0]
+        component = hass.data.get(domain)
+
+        if not component or not hasattr(component, "get_entity"):
+            _LOGGER.warning("Component for domain '%s' not loaded", domain)
+            continue
+
+        # 3. Get runtime entity object
+        entity_object = component.get_entity(entity_id)
+
+        if not entity_object:
+            _LOGGER.warning("Could not get runtime entity object for %s", entity_id)
+            continue
+
+        # 4. Duck Typing Check
+        if not hasattr(entity_object, "update_watering_schedule"):
+            _LOGGER.error(
+                "Entity %s does not support watering schedule updates",
+                entity_id,
+            )
+            continue
+
+        # 5. Execute schedule update
+        try:
+            _LOGGER.debug(
+                "Updating watering schedule for %s to %02d:%02d",
+                entity_id,
+                hour,
+                minute,
+            )
+            entity_object.update_watering_schedule(hour, minute)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error(
+                "Failed to update watering schedule for %s: %s", entity_id, err
+            )
+
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up Hue integration."""
 
@@ -169,6 +243,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         SERVICE_ACTIVATE_WATERING,  # Now this variable is defined via import
         _async_watering_handler,
         schema=WATERING_SERVICE_SCHEMA,
+    )
+
+    # 4. Register Watering Schedule Service
+    async def _async_watering_schedule_handler(call):
+        await async_handle_watering_schedule_service(hass, call)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_WATERING_SCHEDULE,
+        _async_watering_schedule_handler,
+        schema=WATERING_SCHEDULE_SERVICE_SCHEMA,
     )
 
     return True

@@ -20,6 +20,8 @@ class GreenhousePanel extends LitElement {
       _aiAnalysis: { type: String }, // AI analysis result
       _aiLoading: { type: Boolean }, // AI loading state
       _showPresetQuestions: { type: Boolean }, // Show preset questions panel
+
+      wateringSchedule: { type: Object },
     };
   }
 
@@ -46,6 +48,13 @@ class GreenhousePanel extends LitElement {
     this._aiAnalysis = "";
     this._aiLoading = false;
     this._showPresetQuestions = false;
+
+    this.wateringSchedule = {
+      time: "12:00",
+      hour: 12,
+      minute: 0,
+      duration: 30,
+    };
   }
 
   willUpdate(changedProperties) {
@@ -61,6 +70,20 @@ class GreenhousePanel extends LitElement {
             this._stopWateringCountdown();
           }
           this._waterActive = newWaterActive;
+        }
+
+        // Sync watering schedule from backend
+        const backendHour = plugStateObj.attributes.watering_hour;
+        const backendMinute = plugStateObj.attributes.watering_minute;
+        if (backendHour !== undefined && backendMinute !== undefined) {
+          this.wateringSchedule = {
+            time: `${String(backendHour).padStart(2, "0")}:${String(
+              backendMinute,
+            ).padStart(2, "0")}`,
+            hour: backendHour,
+            minute: backendMinute,
+            duration: 30,
+          };
         }
       }
 
@@ -621,6 +644,200 @@ class GreenhousePanel extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  // Watering Schedule - HALF WIDTH
+  _renderWateringSchedule() {
+    return html`
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon">📅</span>
+            <span>Watering Schedule</span>
+          </div>
+        </div>
+
+        <div class="schedule-item" @click="${this._showTimePickerDialog}">
+          <div class="schedule-time">
+            ☀️ Daily at ${this.wateringSchedule.time}
+          </div>
+          <div class="schedule-action">
+            Morning watering - ${this.wateringSchedule.duration} seconds
+            duration
+          </div>
+          <ha-icon icon="mdi:pencil" class="edit-icon"></ha-icon>
+        </div>
+      </div>
+    `;
+  }
+
+  // Dialog box for adjusting schedules
+  _showTimePickerDialog() {
+    const dialog = document.createElement("div");
+    dialog.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+  `;
+
+    // Generation time options (every 30 minutes)
+    const timeOptions = [];
+    for (let hour = 0; hour < 24; hour++) {
+      for (let minute of [0, 30]) {
+        // Generation time options (every 15 minutes)
+        // for (let minute of [0, 15, 30, 45]) {
+        const timeStr = `${String(hour).padStart(2, "0")}:${String(
+          minute,
+        ).padStart(2, "0")}`;
+        timeOptions.push({
+          value: timeStr,
+          label: timeStr,
+          hour: hour,
+          minute: minute,
+        });
+      }
+    }
+
+    // options HTML
+    const optionsHTML = timeOptions
+      .map((opt) => {
+        const selected =
+          opt.value === this.wateringSchedule.time ? "selected" : "";
+        return `<option value="${opt.value}" ${selected}>${opt.label}</option>`;
+      })
+      .join("");
+
+    dialog.innerHTML = `
+    <div style="
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+    " class="dialog-overlay"></div>
+
+    <div style="
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      min-width: 320px;
+      max-width: 400px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+      z-index: 10000;
+    " class="dialog-content">
+      <h3 style="margin: 0 0 20px 0; font-size: 18px; font-weight: 600;">
+        Adjust Watering Schedule
+      </h3>
+
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
+        <label style="font-size: 14px; font-weight: 500; color: #333;">
+          What time would you like to water daily?
+        </label>
+        <select id="time-select" style="
+          padding: 12px;
+          font-size: 16px;
+          border: 2px solid #ddd;
+          border-radius: 8px;
+          font-family: inherit;
+          background: white;
+          cursor: pointer;
+        ">
+          ${optionsHTML}
+        </select>
+      </div>
+
+      <div class="dialog-actions" style="display: flex; gap: 12px; justify-content: flex-end;">
+        <button class="cancel-btn" style="
+          padding: 10px 20px;
+          border: none;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          background: #e0e0e0;
+          font-family: inherit;
+        ">Cancel</button>
+        <button class="confirm-btn" style="
+          padding: 10px 20px;
+          border: none;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          background: #4CAF50;
+          color: white;
+          font-family: inherit;
+        ">Confirm</button>
+      </div>
+    </div>
+  `;
+
+    document.body.appendChild(dialog);
+
+    const closeDialog = () => {
+      console.log("Closing dialog");
+      if (dialog && dialog.parentNode) {
+        document.body.removeChild(dialog);
+      }
+    };
+
+    dialog.querySelector(".cancel-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeDialog();
+    });
+
+    dialog.querySelector(".dialog-overlay").addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeDialog();
+    });
+
+    dialog.querySelector(".confirm-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+
+      const timeValue = dialog.querySelector("#time-select").value;
+      const [hour, minute] = timeValue.split(":").map(Number);
+      const duration = 30;
+
+      console.log("Updating schedule:", hour, minute, duration);
+      this._updateSchedule(hour, minute, duration);
+      closeDialog();
+    });
+  }
+
+  // The handler function executed after clicking the confirmation button
+  // Call backend service to update watering schedule
+  _updateSchedule(hour, minute, duration) {
+    // Update local state for immediate UI feedback
+    this.wateringSchedule = {
+      time: `${String(hour).padStart(2, "0")}:${String(minute).padStart(
+        2,
+        "0",
+      )}`,
+      hour,
+      minute,
+      duration,
+    };
+
+    this.requestUpdate();
+
+    // Call backend service to persist the schedule change
+    this.hass.callService("hue", "set_watering_schedule", {
+      entity_id: this.plugEntityId,
+      hour: hour,
+      minute: minute,
+    });
+
+    console.log(
+      `Watering schedule updated to ${hour}:${minute} via backend service`,
+    );
   }
 
   // ==================== ACTION HANDLERS (OPTIMISTIC UI) ====================

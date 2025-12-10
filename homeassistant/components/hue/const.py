@@ -85,8 +85,11 @@ SERVICE_SET_GREENHOUSE_SCENE = "set_greenhouse_scene"
 CONF_WATERING_DURATION = "duration"
 DEFAULT_WATERING_DURATION = 0.5  # Minutes (30 seconds)
 SERVICE_ACTIVATE_WATERING = "activate_watering"
+SERVICE_SET_WATERING_SCHEDULE = "set_watering_schedule"
 ATTR_NEXT_WATERING = "next_watering_time"
 ATTR_WATERING_ACTIVE = "watering_active"
+ATTR_WATERING_HOUR = "hour"
+ATTR_WATERING_MINUTE = "minute"
 
 # Special flag passed to switch.turn_on to indicate this is a watering event
 ATTR_HUE_WATERING_FLAG = "hue_watering_trigger"

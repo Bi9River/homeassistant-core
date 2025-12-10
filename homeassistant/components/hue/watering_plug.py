@@ -13,9 +13,9 @@ from homeassistant.util import dt as dt_util
 
 from .const import ATTR_NEXT_WATERING, ATTR_WATERING_ACTIVE, DEFAULT_WATERING_DURATION
 
-# Configuration: Water every day at 07:00 AM
-WATERING_HOUR = 7
-WATERING_MINUTE = 0
+# Default configuration: Water every day at 07:00 AM
+DEFAULT_WATERING_HOUR = 7
+DEFAULT_WATERING_MINUTE = 0
 
 if TYPE_CHECKING:
 
@@ -54,20 +54,16 @@ class WateringPlugMixin(WateringPlugMixinBase):
         self._watering_schedule_unsub: Callable[[], None] | None = None
         self._watering_auto_off_unsub: Callable[[], None] | None = None
         self._watering_end_time: datetime.datetime | None = None
+        self._watering_hour: int = DEFAULT_WATERING_HOUR
+        self._watering_minute: int = DEFAULT_WATERING_MINUTE
 
     async def async_added_to_hass(self) -> None:
         """Run when entity is added to register the scheduler."""
         await super().async_added_to_hass()
 
-        # SEP-17: Register daily schedule at 07:00 AM
+        # SEP-17: Register daily schedule
         if self.hass:
-            self._watering_schedule_unsub = async_track_time_change(
-                self.hass,
-                self._async_check_watering_schedule,
-                hour=WATERING_HOUR,
-                minute=WATERING_MINUTE,
-                second=0,
-            )
+            self._register_watering_schedule()
 
     async def async_will_remove_from_hass(self) -> None:
         """Clean up listeners when entity is removed."""
@@ -76,6 +72,33 @@ class WateringPlugMixin(WateringPlugMixinBase):
             self._watering_schedule_unsub()
             self._watering_schedule_unsub = None
         self._cancel_auto_off_timer()
+
+    def _register_watering_schedule(self) -> None:
+        """Register the watering schedule with current hour/minute settings."""
+        if self._watering_schedule_unsub:
+            self._watering_schedule_unsub()
+            self._watering_schedule_unsub = None
+
+        self._watering_schedule_unsub = async_track_time_change(
+            self.hass,
+            self._async_check_watering_schedule,
+            hour=self._watering_hour,
+            minute=self._watering_minute,
+            second=0,
+        )
+
+    @callback
+    def update_watering_schedule(self, hour: int, minute: int) -> None:
+        """Update the watering schedule to a new time."""
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            return
+
+        self._watering_hour = hour
+        self._watering_minute = minute
+
+        # Re-register the schedule with new time
+        self._register_watering_schedule()
+        self.async_write_ha_state()
 
     @callback
     def _async_check_watering_schedule(
@@ -129,7 +152,10 @@ class WateringPlugMixin(WateringPlugMixinBase):
         # Calculate next run time for display
         now = dt_util.now()
         next_run = now.replace(
-            hour=WATERING_HOUR, minute=WATERING_MINUTE, second=0, microsecond=0
+            hour=self._watering_hour,
+            minute=self._watering_minute,
+            second=0,
+            microsecond=0,
         )
         if next_run <= now:
             next_run += datetime.timedelta(days=1)
@@ -137,6 +163,9 @@ class WateringPlugMixin(WateringPlugMixinBase):
         return {
             ATTR_WATERING_ACTIVE: self._watering_active,
             ATTR_NEXT_WATERING: next_run.isoformat(),
+            "watering_hour": self._watering_hour,
+            "watering_minute": self._watering_minute,
+            "watering_time": f"{self._watering_hour:02d}:{self._watering_minute:02d}",
         }
 
     @property
