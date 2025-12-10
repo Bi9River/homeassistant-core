@@ -736,6 +736,36 @@ class GreenhousePanel extends LitElement {
     `;
   }
 
+  // Helper function to set up common dialog events (DRY principle)
+  _setupDialogEvents(dialog, onConfirm, dialogName = "dialog") {
+    document.body.appendChild(dialog);
+
+    const closeDialog = () => {
+      console.log(`Closing ${dialogName}`);
+      if (dialog && dialog.parentNode) {
+        document.body.removeChild(dialog);
+      }
+    };
+
+    // Cancel button closes dialog
+    dialog.querySelector(".cancel-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeDialog();
+    });
+
+    // Clicking overlay closes dialog
+    dialog.querySelector(".dialog-overlay").addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeDialog();
+    });
+
+    // Confirm button executes callback then closes
+    dialog.querySelector(".confirm-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      onConfirm(dialog, closeDialog);
+    });
+  }
+
   // Dialog box for adjusting greenhouse lighting schedule
   _showGreenhouseScheduleDialog() {
     const dialog = document.createElement("div");
@@ -864,46 +894,30 @@ class GreenhousePanel extends LitElement {
     </div>
   `;
 
-    document.body.appendChild(dialog);
+    // Use helper function to set up dialog events
+    this._setupDialogEvents(
+      dialog,
+      (dialog, closeDialog) => {
+        const growthHour = parseInt(
+          dialog.querySelector("#growth-hour-select").value,
+          10,
+        );
+        const restHour = parseInt(
+          dialog.querySelector("#rest-hour-select").value,
+          10,
+        );
 
-    const closeDialog = () => {
-      console.log("Closing greenhouse schedule dialog");
-      if (dialog && dialog.parentNode) {
-        document.body.removeChild(dialog);
-      }
-    };
+        if (growthHour === restHour) {
+          alert("Growth hour and rest hour cannot be the same!");
+          return;
+        }
 
-    dialog.querySelector(".cancel-btn").addEventListener("click", (e) => {
-      e.stopPropagation();
-      closeDialog();
-    });
-
-    dialog.querySelector(".dialog-overlay").addEventListener("click", (e) => {
-      e.stopPropagation();
-      closeDialog();
-    });
-
-    dialog.querySelector(".confirm-btn").addEventListener("click", (e) => {
-      e.stopPropagation();
-
-      const growthHour = parseInt(
-        dialog.querySelector("#growth-hour-select").value,
-        10,
-      );
-      const restHour = parseInt(
-        dialog.querySelector("#rest-hour-select").value,
-        10,
-      );
-
-      if (growthHour === restHour) {
-        alert("Growth hour and rest hour cannot be the same!");
-        return;
-      }
-
-      console.log("Updating greenhouse schedule:", growthHour, restHour);
-      this._updateGreenhouseSchedule(growthHour, restHour);
-      closeDialog();
-    });
+        console.log("Updating greenhouse schedule:", growthHour, restHour);
+        this._updateGreenhouseSchedule(growthHour, restHour);
+        closeDialog();
+      },
+      "greenhouse schedule dialog",
+    );
   }
 
   // Dialog box for adjusting watering schedules
@@ -1015,36 +1029,20 @@ class GreenhousePanel extends LitElement {
     </div>
   `;
 
-    document.body.appendChild(dialog);
+    // Use helper function to set up dialog events
+    this._setupDialogEvents(
+      dialog,
+      (dialog, closeDialog) => {
+        const timeValue = dialog.querySelector("#time-select").value;
+        const [hour, minute] = timeValue.split(":").map(Number);
+        const duration = 30;
 
-    const closeDialog = () => {
-      console.log("Closing dialog");
-      if (dialog && dialog.parentNode) {
-        document.body.removeChild(dialog);
-      }
-    };
-
-    dialog.querySelector(".cancel-btn").addEventListener("click", (e) => {
-      e.stopPropagation();
-      closeDialog();
-    });
-
-    dialog.querySelector(".dialog-overlay").addEventListener("click", (e) => {
-      e.stopPropagation();
-      closeDialog();
-    });
-
-    dialog.querySelector(".confirm-btn").addEventListener("click", (e) => {
-      e.stopPropagation();
-
-      const timeValue = dialog.querySelector("#time-select").value;
-      const [hour, minute] = timeValue.split(":").map(Number);
-      const duration = 30;
-
-      console.log("Updating schedule:", hour, minute, duration);
-      this._updateSchedule(hour, minute, duration);
-      closeDialog();
-    });
+        console.log("Updating schedule:", hour, minute, duration);
+        this._updateSchedule(hour, minute, duration);
+        closeDialog();
+      },
+      "time picker dialog",
+    );
   }
 
   // The handler function executed after clicking the confirmation button
