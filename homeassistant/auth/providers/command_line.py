@@ -89,21 +89,26 @@ class CommandLineAuthProvider(AuthProvider):
             raise InvalidAuthError
 
         if self.config[CONF_META]:
-            meta: dict[str, str] = {}
-            for _line in stdout.splitlines():
-                try:
-                    line = _line.decode().lstrip()
-                except ValueError:
-                    # malformed line
-                    continue
-                if line.startswith("#") or "=" not in line:
-                    continue
-                key, _, value = line.partition("=")
-                key = key.strip()
-                value = value.strip()
-                if key in self.ALLOWED_META_KEYS:
-                    meta[key] = value
+            meta = self._parse_metadata(stdout)
             self._user_meta[username] = meta
+
+    # Extract function to reduce complexity
+    def _parse_metadata(self, stdout: bytes) -> dict[str, str]:
+        """Parse metadata from command output."""
+        meta: dict[str, str] = {}
+        for _line in stdout.splitlines():
+            try:
+                line = _line.decode().lstrip()
+            except ValueError:
+                continue
+            if line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip()
+            if key in self.ALLOWED_META_KEYS:
+                meta[key] = value
+        return meta
 
     async def async_get_or_create_credentials(
         self, flow_result: Mapping[str, str]
