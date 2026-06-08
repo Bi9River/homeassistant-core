@@ -1500,39 +1500,44 @@ class AlexaModeController(AlexaCapability):
 
         return None
 
+    def _fan_capability_resource(self) -> dict[str, list[dict[str, Any]]]:
+        """Return capabilityResources object of fan direction."""
+        self._resource = AlexaModeResource(
+            [AlexaGlobalCatalog.SETTING_DIRECTION], False
+        )
+        self._resource.add_mode(
+            f"{fan.ATTR_DIRECTION}.{fan.DIRECTION_FORWARD}", [fan.DIRECTION_FORWARD]
+        )
+        self._resource.add_mode(
+            f"{fan.ATTR_DIRECTION}.{fan.DIRECTION_REVERSE}", [fan.DIRECTION_REVERSE]
+        )
+        return self._resource.serialize_capability_resources()
+
+    def _fan_preset_mode(self) -> dict[str, list[dict[str, Any]]]:
+        self._resource = AlexaModeResource([AlexaGlobalCatalog.SETTING_PRESET], False)
+        preset_modes = self.entity.attributes.get(fan.ATTR_PRESET_MODES) or []
+        for preset_mode in preset_modes:
+            self._resource.add_mode(
+                f"{fan.ATTR_PRESET_MODE}.{preset_mode}", [preset_mode]
+            )
+        # Fans with a single preset_mode completely break Alexa discovery, add a
+        # fake preset (see issue #53832).
+        if len(preset_modes) == 1:
+            self._resource.add_mode(
+                f"{fan.ATTR_PRESET_MODE}.{PRESET_MODE_NA}", [PRESET_MODE_NA]
+            )
+        return self._resource.serialize_capability_resources()
+
     def capability_resources(self) -> dict[str, list[dict[str, Any]]]:
         """Return capabilityResources object."""
 
         # Fan Direction Resource
         if self.instance == f"{fan.DOMAIN}.{fan.ATTR_DIRECTION}":
-            self._resource = AlexaModeResource(
-                [AlexaGlobalCatalog.SETTING_DIRECTION], False
-            )
-            self._resource.add_mode(
-                f"{fan.ATTR_DIRECTION}.{fan.DIRECTION_FORWARD}", [fan.DIRECTION_FORWARD]
-            )
-            self._resource.add_mode(
-                f"{fan.ATTR_DIRECTION}.{fan.DIRECTION_REVERSE}", [fan.DIRECTION_REVERSE]
-            )
-            return self._resource.serialize_capability_resources()
+            return self._fan_capability_resource()
 
         # Fan preset_mode
         if self.instance == f"{fan.DOMAIN}.{fan.ATTR_PRESET_MODE}":
-            self._resource = AlexaModeResource(
-                [AlexaGlobalCatalog.SETTING_PRESET], False
-            )
-            preset_modes = self.entity.attributes.get(fan.ATTR_PRESET_MODES) or []
-            for preset_mode in preset_modes:
-                self._resource.add_mode(
-                    f"{fan.ATTR_PRESET_MODE}.{preset_mode}", [preset_mode]
-                )
-            # Fans with a single preset_mode completely break Alexa discovery, add a
-            # fake preset (see issue #53832).
-            if len(preset_modes) == 1:
-                self._resource.add_mode(
-                    f"{fan.ATTR_PRESET_MODE}.{PRESET_MODE_NA}", [PRESET_MODE_NA]
-                )
-            return self._resource.serialize_capability_resources()
+            return self._fan_preset_mode()
 
         # Humidifier modes
         if self.instance == f"{humidifier.DOMAIN}.{humidifier.ATTR_MODE}":
