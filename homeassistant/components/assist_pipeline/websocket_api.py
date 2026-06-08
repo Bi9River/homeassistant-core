@@ -128,51 +128,141 @@ async def websocket_run(
     msg: dict[str, Any],
 ) -> None:
     """Run a pipeline."""
+    # Extract pipeline and handle not-found error in a helper to improve readability
+    pipeline = _get_pipeline_or_send_error(hass, connection, msg)
+    if pipeline is None:
+        return
+
+    timeout: float = msg.get("timeout", DEFAULT_PIPELINE_TIMEOUT)
+    start_stage = PipelineStage(msg["start_stage"])
+    end_stage = PipelineStage(msg["end_stage"])
+
+    # Prepare initial input arguments and audio-related settings based on the start stage
+    (
+        input_args,
+        handler_id,
+        unregister_handler,
+        wake_word_settings,
+        audio_settings,
+    ) = await _prepare_pipeline_input(hass, connection, msg, start_stage, pipeline)
+
+    # Always pass through the device identifier
+    input_args["device_id"] = msg.get("device_id")
+
+    # Assemble the PipelineRun with prepared settings
+    pipeline_run = PipelineRun(
+        hass,
+        context=connection.context(msg),
+        pipeline=pipeline,
+        start_stage=start_stage,
+        end_stage=end_stage,
+        event_callback=lambda event: connection.send_event(msg["id"], event),
+        runner_data={
+            "stt_binary_handler_id": handler_id,
+            "timeout": timeout,
+        },
+        wake_word_settings=wake_word_settings,
+        audio_settings=audio_settings or AudioSettings(),
+    )
+    input_args["run"] = pipeline_run
+
+    # Obtain a chat session and execute the pipeline input
+    await _execute_pipeline_run(
+        hass,
+        connection,
+        msg,
+        input_args,
+        timeout,
+        unregister_handler,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Helper functions to support the websocket_run command.
+#
+# These helpers break up the complex logic of the websocket_run handler into
+# discrete tasks: pipeline retrieval, input preparation, and execution.  This
+# improves readability and reduces the cognitive complexity of the main
+# websocket_run function.
+
+
+def _get_pipeline_or_send_error(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> Any | None:
+    """Return a pipeline instance or send an error if not found.
+
+    This helper centralises pipeline retrieval and error handling.  If the
+    requested pipeline cannot be found, an error is sent to the client and
+    ``None`` is returned to indicate that further processing should abort.
+    """
     pipeline_id = msg.get("pipeline")
     try:
-        pipeline = async_get_pipeline(hass, pipeline_id=pipeline_id)
+        return async_get_pipeline(hass, pipeline_id=pipeline_id)
     except PipelineNotFound:
         connection.send_error(
             msg["id"],
             "pipeline-not-found",
             f"Pipeline not found: id={pipeline_id}",
         )
-        return
+        return None
 
-    timeout = msg.get("timeout", DEFAULT_PIPELINE_TIMEOUT)
-    start_stage = PipelineStage(msg["start_stage"])
-    end_stage = PipelineStage(msg["end_stage"])
+
+async def _prepare_pipeline_input(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+    start_stage: PipelineStage,
+    pipeline: Any,
+) -> tuple[
+    dict[str, Any],
+    int | None,
+    Callable[[], None] | None,
+    WakeWordSettings | None,
+    AudioSettings | None,
+]:
+    """Prepare input arguments and audio settings based on the start stage.
+
+    Returns a tuple containing:
+
+      1. ``input_args``: a dict of arguments suitable for ``PipelineInput``.
+      2. ``handler_id``: the identifier returned by ``async_register_binary_handler`` (or ``None`` if not applicable).
+      3. ``unregister_handler``: a function to unregister the binary handler (or ``None``).
+      4. ``wake_word_settings``: optional ``WakeWordSettings`` if wake-word detection is enabled.
+      5. ``audio_settings``: optional ``AudioSettings`` used by the pipeline.
+
+    The logic for handling wake-word and STT pipelines is grouped here to
+    simplify the main handler.
+    """
+    input_args: dict[str, Any] = {}
     handler_id: int | None = None
     unregister_handler: Callable[[], None] | None = None
     wake_word_settings: WakeWordSettings | None = None
     audio_settings: AudioSettings | None = None
 
-    # Arguments to PipelineInput
-    input_args: dict[str, Any] = {
-        "device_id": msg.get("device_id"),
-    }
-
+    # Audio pipelines require special handling: they receive binary
+    # websocket messages that must be collected and optionally resampled.
     if start_stage in (PipelineStage.WAKE_WORD, PipelineStage.STT):
-        # Audio pipeline that will receive audio as binary websocket messages
-        msg_input = msg["input"]
+        msg_input = msg.get("input", {})
+        # Queue to buffer incoming raw audio from websocket
         audio_queue: asyncio.Queue[bytes] = asyncio.Queue()
-        incoming_sample_rate = msg_input["sample_rate"]
+        incoming_sample_rate = msg_input.get("sample_rate")
         wake_word_phrase: str | None = None
 
         if start_stage == PipelineStage.WAKE_WORD:
             wake_word_settings = WakeWordSettings(
-                timeout=msg["input"].get("timeout", DEFAULT_WAKE_WORD_TIMEOUT),
+                timeout=msg_input.get("timeout", DEFAULT_WAKE_WORD_TIMEOUT),
                 audio_seconds_to_buffer=msg_input.get("audio_seconds_to_buffer", 0),
             )
         elif start_stage == PipelineStage.STT:
-            wake_word_phrase = msg["input"].get("wake_word_phrase")
+            wake_word_phrase = msg_input.get("wake_word_phrase")
 
         async def stt_stream() -> AsyncGenerator[bytes]:
+            """Yield PCM audio chunks from the queue, resampling if necessary."""
             state = None
-
-            # Yield until we receive an empty chunk
             while chunk := await audio_queue.get():
-                if incoming_sample_rate != SAMPLE_RATE:
+                if incoming_sample_rate and incoming_sample_rate != SAMPLE_RATE:
                     chunk, state = audioop.ratecv(
                         chunk,
                         SAMPLE_WIDTH,
@@ -188,14 +278,16 @@ async def websocket_run(
             _connection: websocket_api.ActiveConnection,
             data: bytes,
         ) -> None:
-            # Forward to STT audio stream
+            """Callback invoked for each binary message containing audio."""
             audio_queue.put_nowait(data)
 
+        # Register handler for binary audio messages
         handler_id, unregister_handler = connection.async_register_binary_handler(
             handle_binary
         )
 
-        # Audio input must be raw PCM at 16Khz with 16-bit mono samples
+        # Build speech metadata expected by the STT engine.  Audio is
+        # delivered as raw PCM at 16kHz, 16-bit, mono.
         input_args["stt_metadata"] = stt.SpeechMetadata(
             language=pipeline.stt_language or pipeline.language,
             format=stt.AudioFormats.WAV,
@@ -207,35 +299,46 @@ async def websocket_run(
         input_args["stt_stream"] = stt_stream()
         input_args["wake_word_phrase"] = wake_word_phrase
 
-        # Audio settings
+        # Create audio settings controlling noise suppression, gain and VAD
         audio_settings = AudioSettings(
             noise_suppression_level=msg_input.get("noise_suppression_level", 0),
             auto_gain_dbfs=msg_input.get("auto_gain_dbfs", 0),
             volume_multiplier=msg_input.get("volume_multiplier", 1.0),
             is_vad_enabled=not msg_input.get("no_vad", False),
         )
-    elif start_stage == PipelineStage.INTENT:
-        # Input to conversation agent
-        input_args["intent_input"] = msg["input"]["text"]
-    elif start_stage == PipelineStage.TTS:
-        # Input to text-to-speech system
-        input_args["tts_input"] = msg["input"]["text"]
 
-    input_args["run"] = PipelineRun(
-        hass,
-        context=connection.context(msg),
-        pipeline=pipeline,
-        start_stage=start_stage,
-        end_stage=end_stage,
-        event_callback=lambda event: connection.send_event(msg["id"], event),
-        runner_data={
-            "stt_binary_handler_id": handler_id,
-            "timeout": timeout,
-        },
-        wake_word_settings=wake_word_settings,
-        audio_settings=audio_settings or AudioSettings(),
+    elif start_stage == PipelineStage.INTENT:
+        # Provide plain text input to the conversation agent
+        input_args["intent_input"] = msg.get("input", {}).get("text")
+
+    elif start_stage == PipelineStage.TTS:
+        # Provide plain text input to the text-to-speech system
+        input_args["tts_input"] = msg.get("input", {}).get("text")
+
+    return (
+        input_args,
+        handler_id,
+        unregister_handler,
+        wake_word_settings,
+        audio_settings,
     )
 
+
+async def _execute_pipeline_run(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+    input_args: dict[str, Any],
+    timeout: float,
+    unregister_handler: Callable[[], None] | None,
+) -> None:
+    """Validate and run a pipeline, handling results and timeouts.
+
+    This helper encapsulates the final steps of pipeline execution: session
+    creation, validation, task scheduling, timeout management and cleanup.
+    """
+    # Establish a chat session for this run.  The session ensures stateful
+    # conversation handling across multiple requests.
     with chat_session.async_get_chat_session(
         hass, msg.get("conversation_id")
     ) as session:
@@ -249,29 +352,61 @@ async def websocket_run(
             connection.send_error(msg["id"], error.code, error.message)
             return
 
-        # Confirm subscription
+        # Confirm subscription; any further events will be pushed via send_event
         connection.send_result(msg["id"])
 
+        # Execute the pipeline asynchronously
         run_task = hass.async_create_task(pipeline_input.execute())
-
-        # Cancel pipeline if user unsubscribes
+        # Allow the client to cancel the pipeline via websocket unsubscribe
         connection.subscriptions[msg["id"]] = run_task.cancel
 
         try:
-            # Task contains a timeout
+            # Enforce a timeout on pipeline execution
             async with asyncio.timeout(timeout):
                 await run_task
         except TimeoutError:
+            # Propagate a timeout error to the client via pipeline events
             pipeline_input.run.process_event(
                 PipelineEvent(
                     PipelineEventType.ERROR,
-                    {"code": "timeout", "message": "Timeout running pipeline"},
+                    {
+                        "code": "timeout",
+                        "message": "Timeout running pipeline",
+                    },
                 )
             )
         finally:
+            # Always unregister the binary handler if it was registered
             if unregister_handler is not None:
-                # Unregister binary handler
                 unregister_handler()
+
+
+def _language_set_from_tags(
+    language_tags: Any,
+    *,
+    ignore_match_all: bool = False,
+) -> set[str] | None:
+    """Convert a list of language tags into a set of base language codes.
+
+    If ``ignore_match_all`` is True and the language tags equal ``MATCH_ALL``,
+    ``None`` is returned to indicate that all languages are accepted and no
+    filtering should occur.  Otherwise, tags are parsed into their base
+    languages using ``language_util.Dialect``.
+    """
+    if not language_tags:
+        return None
+    # Exclude wildcards when requested (used for conversation languages)
+    if ignore_match_all and language_tags == MATCH_ALL:
+        return None
+    languages: set[str] = set()
+    for tag in language_tags:
+        try:
+            dialect = language_util.Dialect.parse(tag)
+            languages.add(dialect.language)
+        except Exception:  # noqa: BLE001
+            # If parsing fails, skip this tag rather than failing entirely
+            _LOGGER.debug("Failed to parse language tag %s", tag, exc_info=True)
+    return languages if languages else None
 
 
 @callback
@@ -399,37 +534,32 @@ def websocket_list_languages(
     This will return a list of languages which are supported by at least one stt, tts
     and conversation engine respectively.
     """
+    # Retrieve the sets of language tags supported by each component
     conv_language_tags = conversation.async_get_conversation_languages(hass)
     stt_language_tags = stt.async_get_speech_to_text_languages(hass)
     tts_language_tags = tts.async_get_text_to_speech_languages(hass)
+
+    # Convert each collection of tags into a set of base language codes.
+    # For conversation languages, ignore a wildcard (MATCH_ALL) meaning all
+    # languages are supported.
+    conv_languages = _language_set_from_tags(conv_language_tags, ignore_match_all=True)
+    stt_languages = _language_set_from_tags(stt_language_tags)
+    tts_languages = _language_set_from_tags(tts_language_tags)
+
+    # Compute the intersection of all non-empty language sets.  If any
+    # component returns ``None`` (meaning unsupported or wildcard), it is
+    # excluded from intersection.  The final intersection contains only
+    # languages supported by at least one provider in each category.
     pipeline_languages: set[str] | None = None
-
-    if conv_language_tags and conv_language_tags != MATCH_ALL:
-        languages = set()
-        for language_tag in conv_language_tags:
-            dialect = language_util.Dialect.parse(language_tag)
-            languages.add(dialect.language)
-        pipeline_languages = languages
-
-    if stt_language_tags:
-        languages = set()
-        for language_tag in stt_language_tags:
-            dialect = language_util.Dialect.parse(language_tag)
-            languages.add(dialect.language)
-        if pipeline_languages is not None:
-            pipeline_languages = language_util.intersect(pipeline_languages, languages)
+    for language_set in (conv_languages, stt_languages, tts_languages):
+        if not language_set:
+            continue
+        if pipeline_languages is None:
+            pipeline_languages = set(language_set)
         else:
-            pipeline_languages = languages
-
-    if tts_language_tags:
-        languages = set()
-        for language_tag in tts_language_tags:
-            dialect = language_util.Dialect.parse(language_tag)
-            languages.add(dialect.language)
-        if pipeline_languages is not None:
-            pipeline_languages = language_util.intersect(pipeline_languages, languages)
-        else:
-            pipeline_languages = languages
+            pipeline_languages = language_util.intersect(
+                pipeline_languages, language_set
+            )
 
     connection.send_result(
         msg["id"],
